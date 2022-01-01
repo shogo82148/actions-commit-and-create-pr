@@ -30,7 +30,7 @@ git diff -z --name-only --cached --no-renames --diff-filter=D | \
 
 SHA_BEFORE=$(git rev-parse HEAD)
 
-: "${INPUT_HEAD_BRANCH:=actions-commit-and-create-pr-$(date -u '+%Y-%m-%d')-${GITHUB_RUN_NUMBER}}"
+: "${INPUT_HEAD_BRANCH:=actions-commit-and-create-pr/$(date -u '+%Y-%m-%d')-${GITHUB_RUN_NUMBER}}"
 export INPUT_HEAD_BRANCH
 
 git push origin "$SHA_BEFORE:refs/heads/$INPUT_HEAD_BRANCH" > /dev/null 2>&1
@@ -55,7 +55,7 @@ jq --null-input \
                 },
                 fileChanges: {
                     additions: $additions,
-                    deletions: $deletions
+                    deletions: $deletions.[0]
                 },
                 expectedHeadOid: $expectedHeadOid,
                 message: {
@@ -70,8 +70,7 @@ if [[ ${RUNNER_DEBUG:-} = '1' ]]; then
     cat "$TMPDIR/query.txt" >&2
 fi
 
-COMMIT_RESULT=$(gh api graphql --input "$TMPDIR/query.txt")
-COMMIT_URL=$(echo "$COMMIT_RESULT" | jq '.data.createCommitOnBranch.commit.url')
+COMMIT_URL=$(gh api graphql --input "$TMPDIR/query.txt" --jq '.data.createCommitOnBranch.commit.url')
 
 echo "::set-output name=commit-url::$COMMIT_URL"
 
