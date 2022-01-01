@@ -51,7 +51,7 @@ COMMIT_URL=$(jq --null-input \
                 },
                 fileChanges: {
                     additions: $additions,
-                    deletions: $deletions[0]
+                    deletions: $deletions
                 },
                 expectedHeadOid: $expectedHeadOid,
                 message: {
