@@ -23,7 +23,7 @@ jobs:
       - name: clean up
         if: always()
         run: |
-          gh pr close ${{ steps.commit.outputs.pr-url }} || true
+          gh pr close --delete-branch ${{ steps.commit.outputs.pr-url }} || true
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
