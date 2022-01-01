@@ -10,7 +10,7 @@ fi
 # check whether there is any changes.
 git add .
 if git diff --cached --exit-code --quiet; then
-    echo "No changes to commit." 2>&1
+    echo "No changes to commit." >&2
     exit
 fi
 
@@ -33,7 +33,9 @@ SHA_BEFORE=$(git rev-parse HEAD)
 : "${INPUT_HEAD_BRANCH:=actions-commit-and-create-pr/$(date -u '+%Y-%m-%d')-${GITHUB_RUN_NUMBER}}"
 export INPUT_HEAD_BRANCH
 
-git push origin "$SHA_BEFORE:refs/heads/$INPUT_HEAD_BRANCH"
+git push origin "$SHA_BEFORE:refs/heads/$INPUT_HEAD_BRANCH" > /dev/null 2>&1
+
+sleep 5
 
 jq --null-input \
     --slurpfile additions "$TMPDIR/additions.txt" \
@@ -67,7 +69,7 @@ jq --null-input \
     > "$TMPDIR/query.txt"
 
 if [[ ${RUNNER_DEBUG:-} = '1' ]]; then
-    cat "$TMPDIR/query.txt" 2>&1
+    cat "$TMPDIR/query.txt" >&2
 fi
 
 COMMIT_RESULT=$(gh api graphql --input "$TMPDIR/query.txt")
@@ -75,7 +77,7 @@ COMMIT_URL=$(echo "$COMMIT_RESULT" | jq '.data.createCommitOnBranch.commit.url')
 
 echo "::set-output name=commit-url::$COMMIT_URL"
 
-git reset HEAD
+git reset HEAD > /dev/null 2>&1
 
 PR_URL=$(gh pr create --title "The bug is fixed" --body "Everything works again" --base "$INPUT_BASE_BRANCH" --head "$INPUT_HEAD_BRANCH")
 echo "::set-output name=pr-url::$PR_URL"
