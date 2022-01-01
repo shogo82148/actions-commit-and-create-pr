@@ -1,0 +1,24 @@
+name: 'Commit and Create a Pull Request'
+description: 'Commit and Create a Pull Request'
+inputs:
+  github_token:
+    description: 'The GitHub Token'
+    required: true
+    default: '${{ github.token }}'
+  base-branch:
+    description: 'base branch'
+    required: true
+    default: '${{ github.ref_name }}'
+outputs:
+  commit-url:
+    description: "The URL of the commit"
+    value: ${{ steps.commit-and-create-pr.outputs.commit-url }}
+runs:
+  using: "composite"
+  steps:
+    - id: commit-and-create-pr
+      run: ${{ github.action_path }}/commit-and-create-pr.sh
+      shell: bash
+      env:
+        GITHUB_TOKEN: '${{ inputs.github-token }}'
+        INPUT_BASE_BRANCH: '${{ inputs.base-branch }}'

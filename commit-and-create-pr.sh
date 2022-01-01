@@ -3,10 +3,14 @@
 set -ue
 set -o pipefail
 
+git add .
+if ! git diff --cached --exit-code --quiet; then
+    echo "No changes to commit." 2>&1
+    exit
+fi
+
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
-
-git add .
 
 # addtions
 git diff -z --name-only --cached --no-renames --diff-filter=d | \
@@ -19,7 +23,7 @@ git diff -z --name-only --cached --no-renames --diff-filter=D | \
     jq --raw-input --slurp 'split("\u0000")' \
     > "$TMPDIR/deletions.txt"
 
-jq --null-input \
+COMMIT_URL=$(jq --null-input \
     --slurpfile additions "$TMPDIR/additions.txt" \
     --slurpfile deletions "$TMPDIR/deletions.txt" \
     --arg expectedHeadOid "$(git rev-parse HEAD)" \
@@ -34,7 +38,7 @@ jq --null-input \
         variables: {
             input: {
                 branch: {
-                    repositoryNameWithOwner: "shogo82148/actions-commit-and-create-pr",
+                    repositoryNameWithOwner: $env:GITHUB_REPOSITORY,
                     branchName: "main"
                 },
                 fileChanges: {
@@ -49,3 +53,8 @@ jq --null-input \
         }
     }' | \
     gh api graphql --input - --jq '.data.createCommitOnBranch.commit.url'
+)
+
+echo "::set-output name=commit-url::$COMMIT_URL"
+
+git reset HEAD
