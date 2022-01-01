@@ -1,7 +1,7 @@
 name: 'Commit and Create a Pull Request'
 description: 'Commit and Create a Pull Request'
 inputs:
-  github_token:
+  github-token:
     description: 'The GitHub Token'
     required: true
     default: '${{ github.token }}'
