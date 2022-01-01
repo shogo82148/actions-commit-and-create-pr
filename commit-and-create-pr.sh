@@ -33,8 +33,6 @@ SHA_BEFORE=$(git rev-parse HEAD)
 : "${INPUT_HEAD_BRANCH:=actions-commit-and-create-pr/$(date -u '+%Y-%m-%d')-${GITHUB_RUN_NUMBER}}"
 export INPUT_HEAD_BRANCH
 
-git push origin "$SHA_BEFORE:refs/heads/$INPUT_HEAD_BRANCH" > /dev/null 2>&1
-
 jq --null-input \
     --slurpfile additions "$TMPDIR/additions.txt" \
     --slurpfile deletions "$TMPDIR/deletions.txt" \
