@@ -24,3 +24,6 @@ jobs:
         if: always()
         run: |
           gh pr close ${{ steps.commit.outputs.pr-url }} || true
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
