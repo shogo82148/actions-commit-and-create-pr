@@ -25,7 +25,7 @@ git diff -z --name-only --cached --no-renames --diff-filter=d | \
 
 # deletions
 git diff -z --name-only --cached --no-renames --diff-filter=D | \
-    jq --raw-input --slurp 'split("\u0000")' \
+    jq --raw-input --slurp 'split("\u0000") | .[] | { path: . }' \
     > "$TMPDIR/deletions.txt"
 
 SHA_BEFORE=$(git rev-parse HEAD)
