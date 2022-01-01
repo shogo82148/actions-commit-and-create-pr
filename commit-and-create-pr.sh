@@ -28,6 +28,9 @@ git diff -z --name-only --cached --no-renames --diff-filter=D | \
     jq --raw-input --slurp 'split("\u0000")' \
     > "$TMPDIR/deletions.txt"
 
+: "${INPUT_HEAD_BRANCH:=actions-commit-and-create-pr/$(date -u '+%Y-%m-%d')-${GITHUB_RUN_NUMBER}}"
+export INPUT_HEAD_BRANCH
+
 COMMIT_URL=$(jq --null-input \
     --slurpfile additions "$TMPDIR/additions.txt" \
     --slurpfile deletions "$TMPDIR/deletions.txt" \
@@ -44,7 +47,7 @@ COMMIT_URL=$(jq --null-input \
             input: {
                 branch: {
                     repositoryNameWithOwner: env.GITHUB_REPOSITORY,
-                    branchName: "main"
+                    branchName: env.INPUT_HEAD_BRANCH,
                 },
                 fileChanges: {
                     additions: $additions,
@@ -63,3 +66,6 @@ COMMIT_URL=$(jq --null-input \
 echo "::set-output name=commit-url::$COMMIT_URL"
 
 git reset HEAD
+
+PR_URL=$(gh pr create --title "The bug is fixed" --body "Everything works again" --base "$INPUT_BASE_BRANCH" --head "$INPUT_HEAD_BRANCH")
+echo "::set-output name=pr-url::$PR_URL"

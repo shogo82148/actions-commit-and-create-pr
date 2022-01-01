@@ -9,10 +9,15 @@ inputs:
     description: 'base branch'
     required: true
     default: '${{ github.ref_name }}'
+  head-branch:
+    description: 'head branch'
 outputs:
   commit-url:
-    description: "The URL of the commit"
+    description: "The URL of a commit created"
     value: ${{ steps.commit-and-create-pr.outputs.commit-url }}
+  pr-url:
+    description: "The URL of a pull request created"
+    value: ${{ steps.commit-and-create-pr.outputs.pr-url }}
 runs:
   using: "composite"
   steps:
@@ -22,3 +27,4 @@ runs:
       env:
         GITHUB_TOKEN: '${{ inputs.github-token }}'
         INPUT_BASE_BRANCH: '${{ inputs.base-branch }}'
+        INPUT_HEAD_BRANCH: '${{ inputs.head-branch }}'
