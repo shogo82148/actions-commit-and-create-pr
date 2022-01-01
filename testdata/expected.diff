@@ -1,0 +1,25 @@
+diff --git "a/testdata/\"new file\".txt" "b/testdata/\"new file\".txt"
+new file mode 100644
+index 0000000..8f48932
+--- /dev/null
++++ "b/testdata/\"new file\".txt"	
+@@ -0,0 +1 @@
++it's a brand new file
+diff --git "a/testdata/\"please delete me\".txt" "b/testdata/\"please delete me\".txt"
+deleted file mode 100644
+index 5a756e6..0000000
+--- "a/testdata/\"please delete me\".txt"	
++++ /dev/null
+@@ -1 +0,0 @@
+-this file should be deleted.
+diff --git a/testdata/rename-me.txt b/testdata/renamed!.txt
+similarity index 100%
+rename from testdata/rename-me.txt
+rename to testdata/renamed!.txt
+diff --git a/testdata/update-me.txt b/testdata/update-me.txt
+index 71dd477..1bf7fd9 100644
+--- a/testdata/update-me.txt
++++ b/testdata/update-me.txt
+@@ -1 +1,2 @@
+ please update me!
++UPDATED!!

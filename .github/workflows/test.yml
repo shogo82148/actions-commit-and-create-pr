@@ -12,4 +12,13 @@ jobs:
       - name: make some changes
         run: ./testdata/update.sh
         shell: bash
-      - uses: ./
+      - id: commit
+        uses: ./
+      - name: verify
+        run: |
+          ./testdata/verify ${{ steps.commit.outputs.pr-url }}
+        shell: bash
+      - name: clean up
+        if: always
+        run: |
+          gh pr close ${{ steps.commit.outputs.pr-url }} || true
