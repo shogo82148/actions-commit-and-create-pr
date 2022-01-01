@@ -17,11 +17,11 @@ git diff -z --name-only --cached --no-renames --diff-filter=d | \
 # deletions
 git diff -z --name-only --cached --no-renames --diff-filter=D | \
     jq --raw-input --slurp 'split("\u0000")' \
-    > "$TMPDIR.deletions.txt"
+    > "$TMPDIR/deletions.txt"
 
 jq --null-input \
     --slurpfile additions "$TMPDIR/additions.txt" \
-    --slurpfile deletions "$TMPDIR.deletions.txt" \
+    --slurpfile deletions "$TMPDIR/deletions.txt" \
     --arg expectedHeadOid "$(git rev-parse HEAD)" \
     --arg query 'mutation ($input: CreateCommitOnBranchInput!) {
         createCommitOnBranch(input: $input) {
