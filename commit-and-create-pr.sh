@@ -7,8 +7,9 @@ if [[ ${RUNNER_DEBUG:-} = '1' ]]; then
     set -x
 fi
 
+# check whether there is any changes.
 git add .
-if ! git diff --cached --exit-code --quiet; then
+if git diff --cached --exit-code --quiet; then
     echo "No changes to commit." 2>&1
     exit
 fi
