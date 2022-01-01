@@ -14,7 +14,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 # addtions
 git diff -z --name-only --cached --no-renames --diff-filter=d | \
-    xargs -0 -n1 sh -c \
+    xargs -0 -n1 bash -c \
     "git show \":0:\$0\" | jq --arg path \"\$0\" --raw-input --slurp --compact-output '{ path: \$path, contents: @base64 }'" \
     > "$TMPDIR/additions.txt"
 
@@ -38,7 +38,7 @@ COMMIT_URL=$(jq --null-input \
         variables: {
             input: {
                 branch: {
-                    repositoryNameWithOwner: $env:GITHUB_REPOSITORY,
+                    repositoryNameWithOwner: env.GITHUB_REPOSITORY,
                     branchName: "main"
                 },
                 fileChanges: {
