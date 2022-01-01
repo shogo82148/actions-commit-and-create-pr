@@ -1,6 +1,8 @@
 name: test
 on:
   push:
+    branches-ignore:
+      - 'actions-commit-and-create-pr/*'
 
 jobs:
   test:
