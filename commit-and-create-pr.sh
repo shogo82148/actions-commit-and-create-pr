@@ -3,6 +3,10 @@
 set -ue
 set -o pipefail
 
+if [[ ${RUNNER_DEBUG:-} = '1' ]]; then
+    set -x
+fi
+
 git add .
 if ! git diff --cached --exit-code --quiet; then
     echo "No changes to commit." 2>&1
@@ -12,7 +16,7 @@ fi
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-# addtions
+# additions
 git diff -z --name-only --cached --no-renames --diff-filter=d | \
     xargs -0 -n1 bash -c \
     "git show \":0:\$0\" | jq --arg path \"\$0\" --raw-input --slurp --compact-output '{ path: \$path, contents: @base64 }'" \
