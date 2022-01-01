@@ -16,7 +16,7 @@ jobs:
         uses: ./
       - name: verify
         run: |
-          ./testdata/verify ${{ steps.commit.outputs.pr-url }}
+          ./testdata/verify.sh ${{ steps.commit.outputs.pr-url }}
         shell: bash
       - name: clean up
         if: always()
