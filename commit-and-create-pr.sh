@@ -35,7 +35,7 @@ export INPUT_HEAD_BRANCH
 
 git push origin "$SHA_BEFORE:refs/heads/$INPUT_HEAD_BRANCH"
 
-COMMIT_URL=$(jq --null-input \
+jq --null-input \
     --slurpfile additions "$TMPDIR/additions.txt" \
     --slurpfile deletions "$TMPDIR/deletions.txt" \
     --arg expectedHeadOid "$SHA_BEFORE" \
@@ -63,9 +63,15 @@ COMMIT_URL=$(jq --null-input \
                 }
             }
         }
-    }' | \
-    gh api graphql --input - --jq '.data.createCommitOnBranch.commit.url'
-)
+    }' \
+    > "$TMPDIR/query.txt"
+
+if [[ ${RUNNER_DEBUG:-} = '1' ]]; then
+    cat "$TMPDIR/query.txt" 2>&1
+fi
+
+COMMIT_RESULT=$(gh api graphql --input "$TMPDIR/query.txt")
+COMMIT_URL=$(echo "$COMMIT_RESULT" | jq '.data.createCommitOnBranch.commit.url')
 
 echo "::set-output name=commit-url::$COMMIT_URL"
 
