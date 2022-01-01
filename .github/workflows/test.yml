@@ -18,6 +18,8 @@ jobs:
         run: |
           ./testdata/verify.sh ${{ steps.commit.outputs.pr-url }}
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: clean up
         if: always()
         run: |
