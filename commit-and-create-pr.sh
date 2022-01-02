@@ -79,7 +79,7 @@ echo "::set-output name=commit-url::$COMMIT_URL"
 
 git reset HEAD > /dev/null 2>&1
 
-cat <<"__END_OF_BODY__" > "$TMPDIR/pr-body.txt"
+cat <<__END_OF_BODY__ > "$TMPDIR/pr-body.txt"
 ${INPUT_BODY:-$INPUT_COMMIT_MESSAGE}
 
 -----
