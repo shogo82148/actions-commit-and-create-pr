@@ -11,6 +11,12 @@ inputs:
     default: '${{ github.ref_name }}'
   head-branch:
     description: 'head branch'
+  title:
+    description: 'The title of pull requests'
+  body:
+    description: 'The body of pull requests'
+  commit-message:
+    description: 'The commit message'
 outputs:
   commit-url:
     description: "The URL of a commit created"
@@ -28,3 +34,6 @@ runs:
         GITHUB_TOKEN: '${{ inputs.github-token }}'
         INPUT_BASE_BRANCH: '${{ inputs.base-branch }}'
         INPUT_HEAD_BRANCH: '${{ inputs.head-branch }}'
+        INPUT_TITLE: '${{ inputs.title }}'
+        INPUT_BODY: '${{ inputs.body }}'
+        INPUT_COMMIT_MESSAGE: '${{ inputs.commit-message }}'
