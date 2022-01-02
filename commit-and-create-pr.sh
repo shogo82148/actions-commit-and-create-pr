@@ -48,7 +48,7 @@ jq --null-input \
     '{
         query: $query,
         variables: {
-            input {
+            input: {
                 repositoryId: $repositoryId,
                 name: $branch,
                 oid: $oid
