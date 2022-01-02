@@ -48,9 +48,11 @@ jq --null-input \
     '{
         query: $query,
         variables: {
-            repositoryId: $repositoryId,
-            name: $branch,
-            oid: $oid,
+            input {
+                repositoryId: $repositoryId,
+                name: $branch,
+                oid: $oid
+            }
         }
     }' \
     > "$TMPDIR/query-create-branch.txt"
