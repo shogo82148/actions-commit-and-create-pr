@@ -59,7 +59,8 @@ jq --null-input \
 if [[ ${RUNNER_DEBUG:-} = '1' ]]; then
     cat "$TMPDIR/query-create-branch.txt" >&2
 fi
-gh api graphql --input "$TMPDIR/query-create-branch.txt" > /dev/null 2>&1
+
+: "$(gh api graphql --input "$TMPDIR/query-create-branch.txt")"
 
 # create a commit
 jq --null-input \
