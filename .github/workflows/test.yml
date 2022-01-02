@@ -9,6 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - id: commit
+        uses: ./
+        with:
+          github-token: "this token should be not used because there is no changes"
       - name: make some changes
         run: ./testdata/update.sh
         shell: bash
