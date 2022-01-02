@@ -35,8 +35,33 @@ SHA_BEFORE=$(git rev-parse HEAD)
 export INPUT_HEAD_BRANCH
 : "${INPUT_COMMIT_MESSAGE:=Auto updates by the $GITHUB_WORKFLOW workflow}"
 
-git push origin "$SHA_BEFORE:refs/heads/$INPUT_HEAD_BRANCH" > /dev/null 2>&1
+# create a branch
+jq --null-input \
+    --arg query 'mutation ($input: CreateRefInput!) {
+        createRef(input: $input) {
+            clientMutationId
+        }
+    }' \
+    --arg branch "refs/heads/$INPUT_HEAD_BRANCH" \
+    --arg repositoryId "$(gh repo view --json id --jq '.id')"\
+    --arg oid "$SHA_BEFORE" \
+    '{
+        query: $query,
+        variables: {
+            repositoryId: $repositoryId,
+            name: $branch,
+            oid: $oid,
+        }
+    }' \
+    > "$TMPDIR/query-create-branch.txt"
 
+: show the query for debugging
+if [[ ${RUNNER_DEBUG:-} = '1' ]]; then
+    cat "$TMPDIR/query-create-branch.txt" >&2
+fi
+gh api graphql --input "$TMPDIR/query-create-branch.txt" > /dev/null 2>&1
+
+# create a commit
 jq --null-input \
     --slurpfile additions "$TMPDIR/additions.txt" \
     --slurpfile deletions "$TMPDIR/deletions.txt" \
@@ -66,14 +91,13 @@ jq --null-input \
             }
         }
     }' \
-    > "$TMPDIR/query.txt"
+    > "$TMPDIR/query-create-commit.txt"
 
 : show the query for debugging
 if [[ ${RUNNER_DEBUG:-} = '1' ]]; then
-    cat "$TMPDIR/query.txt" >&2
+    cat "$TMPDIR/query-create-commit.txt" >&2
 fi
-
-COMMIT_URL=$(gh api graphql --input "$TMPDIR/query.txt" --jq '.data.createCommitOnBranch.commit.url')
+COMMIT_URL=$(gh api graphql --input "$TMPDIR/query-create-commit.txt" --jq '.data.createCommitOnBranch.commit.url')
 
 echo "::set-output name=commit-url::$COMMIT_URL"
 
