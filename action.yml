@@ -6,17 +6,25 @@ inputs:
     required: true
     default: '${{ github.token }}'
   base-branch:
-    description: 'base branch'
+    description: 'The base branch'
     required: true
     default: '${{ github.ref_name }}'
   head-branch:
-    description: 'head branch'
+    description: 'The head branch'
+    required: false
+  head-branch-prefix:
+    description: 'The prefix of the head branch'
+    required: false
+    default: 'actions-commit-and-create-pr/'
   title:
-    description: 'The title of pull requests'
+    description: 'The title of a pull request'
+    required: false
   body:
-    description: 'The body of pull requests'
+    description: 'The body of a pull request'
+    required: false
   commit-message:
     description: 'The commit message'
+    required: false
 outputs:
   commit-url:
     description: "The URL of a commit created"
@@ -34,6 +42,7 @@ runs:
         GITHUB_TOKEN: '${{ inputs.github-token }}'
         INPUT_BASE_BRANCH: '${{ inputs.base-branch }}'
         INPUT_HEAD_BRANCH: '${{ inputs.head-branch }}'
+        INPUT_HEAD_BRANCH_PREFIX: '${{ inputs.head-branch-prefix }}'
         INPUT_TITLE: '${{ inputs.title }}'
         INPUT_BODY: '${{ inputs.body }}'
         INPUT_COMMIT_MESSAGE: '${{ inputs.commit-message }}'

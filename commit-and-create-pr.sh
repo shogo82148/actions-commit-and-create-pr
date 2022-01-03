@@ -31,7 +31,7 @@ git diff -z --name-only --cached --no-renames --diff-filter=D | \
 SHA_BEFORE=$(git rev-parse HEAD)
 
 # set the default value if they are not configured.
-: "${INPUT_HEAD_BRANCH:=actions-commit-and-create-pr/$(date -u '+%Y-%m-%d')-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT}"
+: "${INPUT_HEAD_BRANCH:=${INPUT_HEAD_BRANCH_PREFIX:-actions-commit-and-create-pr/}$(date -u '+%Y-%m-%d')-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT}"
 export INPUT_HEAD_BRANCH
 : "${INPUT_COMMIT_MESSAGE:=Auto updates by the $GITHUB_WORKFLOW workflow}"
 

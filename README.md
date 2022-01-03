@@ -29,21 +29,30 @@ The GitHub Token. The default is `${{ github.token }}`
 
 The base branch. The default is the branch name that triggered the workflow run. ( `${{ github.ref_name }}` )
 
-### head-branch:
+### head-branch
 
-The head branch.
+The head branch. The default is `actions-commit-and-create-pr/$(date -u '+%Y-%m-%d')-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT`.
 
-### title
+### head-branch-prefix
 
-The title of pull requests.
-
-### body
-
-The body of a pull request.
+The prefix of the head branch.
+If `head-branch` is set, `head-branch-prefix` is ignored.
+The default is `actions-commit-and-create-pr/`.
 
 ### commit-message:
 
 The commit message.
+The default is "Auto updates by the $GITHUB_WORKFLOW workflow".
+
+### title
+
+The title of pull requests.
+The default is same as the commit message.
+
+### body
+
+The body of a pull request.
+The default is same as the commit message.
 
 ## Related Works
 
