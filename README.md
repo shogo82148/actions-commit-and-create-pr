@@ -1,5 +1,10 @@
 # Commit and Create a Pull Request Action
 
+Commit all changes to a new branch, create a pull request.
+The action uses the GraphQL API instead of the `git` command.
+Commits authored using the action are automatically GPG signed and
+are [marked as verified](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification) in the GitHub UI.
+
 ## Synopsis
 
 ```yaml
@@ -18,6 +23,12 @@ jobs:
       - id: commit and create a pull request
         uses: shogo82148/actions-commit-and-create-pr@v1
 ```
+
+## Limitation
+
+Currently (on 2022-01-03), the [createCommitOnBranch](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch) mutation doesn't support file types (i.e. regular file, symlink, submodule, ...).
+All files will be committed as regular files.
+You can't create executable files, symlinks, submodules, and so on.
 
 ## Inputs
 
