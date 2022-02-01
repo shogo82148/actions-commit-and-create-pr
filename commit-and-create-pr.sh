@@ -20,7 +20,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # additions
 git diff -z --name-only --cached --no-renames --diff-filter=d | \
     xargs -0 -n1 bash -c \
-    "git show \":0:\$0\" | jq --arg path \"\$0\" --raw-input --slurp --compact-output '{ path: \$path, contents: @base64 }'" \
+    "git show \":0:\$0\" | base64 | jq --arg path \"\$0\" --raw-input --slurp --compact-output '{ path: \$path, contents: . }'" \
     > "$TMPDIR/additions.txt"
 
 # deletions
