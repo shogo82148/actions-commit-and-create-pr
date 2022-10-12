@@ -122,9 +122,9 @@ PR_URL=$(gh pr create --title "${INPUT_TITLE:-$INPUT_COMMIT_MESSAGE}" --body-fil
 if [[ -f "${GITHUB_OUTPUT:-}" ]]; then
 cat <<__END_OF_OUTPUT__ >> "$GITHUB_OUTPUT"
 commit-url=$COMMIT_URL
-name=pr-url::$PR_URL
+pr-url=$PR_URL
 __END_OF_OUTPUT__
 else
 echo "::set-output name=commit-url::$COMMIT_URL"
-echo "::set-output name=commit-url::$COMMIT_URL"
+echo "::set-output name=pr-url::$PR_URL"
 fi
