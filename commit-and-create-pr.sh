@@ -102,8 +102,6 @@ if [[ ${RUNNER_DEBUG:-} = '1' ]]; then
 fi
 COMMIT_URL=$(gh api graphql --input "$TMPDIR/query-create-commit.txt" --jq '.data.createCommitOnBranch.commit.url')
 
-echo "::set-output name=commit-url::$COMMIT_URL"
-
 git reset HEAD > /dev/null 2>&1
 
 cat <<__END_OF_BODY__ > "$TMPDIR/pr-body.txt"
@@ -120,4 +118,13 @@ if [[ ${RUNNER_DEBUG:-} = '1' ]]; then
 fi
 
 PR_URL=$(gh pr create --title "${INPUT_TITLE:-$INPUT_COMMIT_MESSAGE}" --body-file "$TMPDIR/pr-body.txt" --base "$INPUT_BASE_BRANCH" --head "$INPUT_HEAD_BRANCH")
+
+if [[ -f "${GITHUB_OUTPUT:-}" ]]; then
+cat <<__END_OF_OUTPUT__ >> "$GITHUB_OUTPUT"
+commit-url=$COMMIT_URL
+pr-url=$PR_URL
+__END_OF_OUTPUT__
+else
+echo "::set-output name=commit-url::$COMMIT_URL"
 echo "::set-output name=pr-url::$PR_URL"
+fi
