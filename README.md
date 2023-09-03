@@ -3,7 +3,7 @@
 Commit all changes to a new branch, create a pull request.
 The action uses the GraphQL API instead of the `git` command.
 Commits authored using the action are automatically GPG signed and
-are [marked as verified](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification) in the GitHub UI.
+are [marked as verified](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification) on the GitHub UI.
 
 ## Synopsis
 
@@ -16,11 +16,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: make some changes
-        run: ': do something'
+        run: ": do something"
 
-      - id: commit and create a pull request
+      - name: commit and create a pull request
         uses: shogo82148/actions-commit-and-create-pr@v1
 ```
 
@@ -72,4 +72,4 @@ The default is same as the commit message.
 ## See Also
 
 - [A simpler API for authoring commits](https://github.blog/changelog/2021-09-13-a-simpler-api-for-authoring-commits/)
-- [GitHub GraphQL APIで新しいブランチを作成する](https://int128.hatenablog.com/entry/2020/01/15/165432)
+- [GitHub GraphQL API で新しいブランチを作成する](https://int128.hatenablog.com/entry/2020/01/15/165432)
