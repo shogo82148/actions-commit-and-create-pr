@@ -24,8 +24,9 @@ git diff -z --name-only --cached --no-renames --diff-filter=d | \
     > "$TMPDIR/additions.txt"
 
 # deletions
+# shellcheck disable=SC2016
 git diff -z --name-only --cached --no-renames --diff-filter=D | \
-    jq --raw-input --slurp 'split("\u0000") | .[] | { path: . }' \
+    xargs -0 -n1 -I{} jq --null-input --arg filename {} '{ path: $filename }' \
     > "$TMPDIR/deletions.txt"
 
 SHA_BEFORE=$(git rev-parse HEAD)
