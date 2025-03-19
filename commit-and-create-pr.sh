@@ -26,7 +26,7 @@ git diff -z --name-only --cached --no-renames --diff-filter=d | \
 # deletions
 # shellcheck disable=SC2016
 git diff -z --name-only --cached --no-renames --diff-filter=D | \
-    xargs -0 -n1 -I{} jq --null-input --arg filename {} '{ path: $filename }' \
+    xargs -0 -I{} jq --null-input --arg filename {} '{ path: $filename }' \
     > "$TMPDIR/deletions.txt"
 
 SHA_BEFORE=$(git rev-parse HEAD)
