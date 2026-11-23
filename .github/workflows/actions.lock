@@ -5,6 +5,8 @@ version: 'v0.0.3'
 workflows:
     '.github/workflows/test.yml':
         - 'actions/checkout@v7.0.1'
+    '.github/workflows/unit-test.yml':
+        - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
 dependencies:
     'actions/checkout@v7.0.1':
