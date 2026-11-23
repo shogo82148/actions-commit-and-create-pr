@@ -29,6 +29,10 @@ inputs:
     description: "The directory that contains changes to commit"
     required: false
     default: "."
+  skip-duplicate:
+    description: "Skip creating a pull request if an open pull request into the base branch has the same changes"
+    required: false
+    default: "true"
 outputs:
   commit-url:
     description: "The URL of a commit created"
@@ -40,6 +44,8 @@ outputs:
     description: "The URL of a pull request created"
   pr-number:
     description: "The number of a pull request created"
+  duplicated:
+    description: "true if creating a pull request is skipped because an open pull request has the same changes"
 runs:
   using: "node24"
   main: "dist/index.js"

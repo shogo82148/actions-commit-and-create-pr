@@ -172,4 +172,55 @@ describe("GitHubClient", () => {
       }),
     ).rejects.toThrow(/422.*A pull request already exists/);
   });
+
+  it("lists all open pull requests with pagination", async () => {
+    const pull = (n: number, repo: { full_name: string } | null) => ({
+      number: n,
+      html_url: `https://example.com/o/r/pull/${n}`,
+      body: n === 1 ? null : `body ${n}`,
+      head: { ref: `topic-${n}`, repo },
+    });
+    const pages = [
+      Array.from({ length: 100 }, (_, i) => pull(i + 1, { full_name: "o/r" })),
+      [pull(101, null)],
+    ];
+    const fetch = jest.fn<
+      (input: string, init?: RequestInit) => Promise<Response>
+    >(
+      async () =>
+        new Response(JSON.stringify(pages.shift() ?? []), { status: 200 }),
+    );
+    const client = new GitHubClient("token", {
+      apiUrl: "https://api.example.com",
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    });
+    const pulls = await client.listOpenPullRequests("o/r", "feature/a b");
+
+    expect(pulls).toHaveLength(101);
+    expect(pulls[0]).toEqual({
+      number: 1,
+      url: "https://example.com/o/r/pull/1",
+      body: "",
+      headBranch: "topic-1",
+      headRepository: "o/r",
+    });
+    expect(pulls[100]).toEqual({
+      number: 101,
+      url: "https://example.com/o/r/pull/101",
+      body: "body 101",
+      headBranch: "topic-101",
+      headRepository: null,
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const urls = fetch.mock.calls.map(([url]) => new URL(url));
+    expect(urls[0].pathname).toBe("/repos/o/r/pulls");
+    expect(Object.fromEntries(urls[0].searchParams)).toEqual({
+      state: "open",
+      base: "feature/a b",
+      per_page: "100",
+      page: "1",
+    });
+    expect(urls[1].searchParams.get("page")).toBe("2");
+    expect(fetch.mock.calls[0][1]?.method).toBe("GET");
+  });
 });

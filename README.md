@@ -33,6 +33,22 @@ The token needs the `contents: write` permission to create a branch and a commit
 and the `pull-requests: write` permission to create a pull request.
 If you use `GITHUB_TOKEN`, you also need to enable "Allow GitHub Actions to create and approve pull requests" in the repository settings.
 
+## Duplicate Pull Requests
+
+By default, the action doesn't create a new pull request
+if an open pull request into the base branch has the same changes.
+The changes are compared by the paths, the file modes and the contents of changed files,
+so the pull request is considered as a duplicate even if the base branch has moved forward.
+In that case, the action creates neither a branch nor a commit,
+and the outputs point to the existing pull request.
+
+The action embeds a hidden marker (`<!-- actions-commit-and-create-pr:changes=... -->`) into the pull request body to detect duplicates.
+If you remove the marker from the body, the pull request is no longer considered.
+Only pull requests whose head branch is in the same repository are considered.
+
+If the workflow runs concurrently, both runs may create pull requests with the same changes.
+Use [`concurrency`](https://docs.github.com/en/actions/using-jobs/using-concurrency) to avoid it.
+
 ## File Modes
 
 If all changes are regular files, the action uses the [createCommitOnBranch](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch) mutation.
@@ -70,6 +86,11 @@ The directory that contains changes to commit.
 Only changes under the directory are committed.
 The default is `.`.
 
+### skip-duplicate
+
+Skip creating a pull request if an open pull request into the base branch has the same changes.
+The default is `true`.
+
 ### title
 
 The title of pull requests.
@@ -88,23 +109,33 @@ If there are no changes, the action does nothing and the outputs are empty.
 ### commit-url
 
 The URL of the commit created.
+It is empty if creating a pull request is skipped.
 
 ### commit-sha
 
 The SHA of the commit created.
 After the action, the head branch is checked out at the commit.
+It is empty if creating a pull request is skipped.
 
 ### head-branch
 
 The name of the head branch created.
+If creating a pull request is skipped, it is the head branch of the existing pull request.
 
 ### pr-url
 
 The URL of the pull request created.
+If creating a pull request is skipped, it is the URL of the existing pull request.
 
 ### pr-number
 
 The number of the pull request created.
+If creating a pull request is skipped, it is the number of the existing pull request.
+
+### duplicated
+
+`true` if creating a pull request is skipped because an open pull request has the same changes.
+Otherwise, `false`.
 
 ## Related Works
 
