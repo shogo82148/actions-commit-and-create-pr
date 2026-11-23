@@ -60,6 +60,15 @@ export interface PullRequest {
   url: string;
 }
 
+/** An open pull request, returned by listOpenPullRequests(). */
+export interface PullRequestSummary extends PullRequest {
+  body: string;
+  /** The name of the head branch. */
+  headBranch: string;
+  /** The repository name with owner of the head branch, or null if the repository is deleted. */
+  headRepository: string | null;
+}
+
 /** Options of GitHubClient. */
 export interface GitHubClientOptions {
   /** The endpoint of GitHub GraphQL API. */
@@ -365,5 +374,48 @@ export class GitHubClient {
       },
     );
     return { number: data.number, url: data.html_url };
+  }
+
+  /**
+   * Lists all open pull requests into the base branch.
+   *
+   * @param repository The repository name with owner.
+   * @param base The name of the base branch.
+   * @returns The open pull requests.
+   */
+  async listOpenPullRequests(
+    repository: string,
+    base: string,
+  ): Promise<PullRequestSummary[]> {
+    const perPage = 100;
+    const result: PullRequestSummary[] = [];
+    for (let page = 1; ; page++) {
+      const query = new URLSearchParams({
+        state: "open",
+        base,
+        per_page: String(perPage),
+        page: String(page),
+      });
+      const data = await this.rest<
+        {
+          number: number;
+          html_url: string;
+          body: string | null;
+          head: { ref: string; repo: { full_name: string } | null };
+        }[]
+      >("GET", `/repos/${repository}/pulls?${query.toString()}`);
+      for (const pr of data) {
+        result.push({
+          number: pr.number,
+          url: pr.html_url,
+          body: pr.body ?? "",
+          headBranch: pr.head.ref,
+          headRepository: pr.head.repo?.full_name ?? null,
+        });
+      }
+      if (data.length < perPage) {
+        return result;
+      }
+    }
   }
 }

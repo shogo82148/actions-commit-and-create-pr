@@ -33,6 +33,7 @@ import require$$1$5 from 'node:dns';
 import require$$5$3 from 'string_decoder';
 import * as child from 'child_process';
 import { setTimeout as setTimeout$1 } from 'timers';
+import { createHash } from 'node:crypto';
 import * as path$1 from 'node:path';
 import * as fs$1 from 'node:fs/promises';
 
@@ -29591,6 +29592,27 @@ function getInput(name, options) {
     return val.trim();
 }
 /**
+ * Gets the input value of the boolean type in the YAML 1.2 "core schema" specification.
+ * Support boolean input list: `true | True | TRUE | false | False | FALSE` .
+ * The return value is also in boolean type.
+ * ref: https://yaml.org/spec/1.2/spec.html#id2804923
+ *
+ * @param     name     name of the input to get
+ * @param     options  optional. See InputOptions.
+ * @returns   boolean
+ */
+function getBooleanInput$1(name, options) {
+    const trueValue = ['true', 'True', 'TRUE'];
+    const falseValue = ['false', 'False', 'FALSE'];
+    const val = getInput(name, options);
+    if (trueValue.includes(val))
+        return true;
+    if (falseValue.includes(val))
+        return false;
+    throw new TypeError(`Input does not meet YAML 1.2 "Core Schema" specification: ${name}\n` +
+        `Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
+}
+/**
  * Sets the value of an output.
  *
  * @param     name     name of the output to set
@@ -30094,6 +30116,38 @@ class GitHubClient {
         });
         return { number: data.number, url: data.html_url };
     }
+    /**
+     * Lists all open pull requests into the base branch.
+     *
+     * @param repository The repository name with owner.
+     * @param base The name of the base branch.
+     * @returns The open pull requests.
+     */
+    async listOpenPullRequests(repository, base) {
+        const perPage = 100;
+        const result = [];
+        for (let page = 1;; page++) {
+            const query = new URLSearchParams({
+                state: "open",
+                base,
+                per_page: String(perPage),
+                page: String(page),
+            });
+            const data = await this.rest("GET", `/repos/${repository}/pulls?${query.toString()}`);
+            for (const pr of data) {
+                result.push({
+                    number: pr.number,
+                    url: pr.html_url,
+                    body: pr.body ?? "",
+                    headBranch: pr.head.ref,
+                    headRepository: pr.head.repo?.full_name ?? null,
+                });
+            }
+            if (data.length < perPage) {
+                return result;
+            }
+        }
+    }
 }
 
 /** The number of blobs uploaded concurrently. */
@@ -30129,7 +30183,46 @@ function isRegularFileChange(change) {
     return regular(change.oldMode) && regular(change.newMode);
 }
 /**
- * Commits all changes in the working directory via GitHub API.
+ * Collects all changes under the working directory.
+ *
+ * The changes are staged to compute the SHAs of the new blobs, and unstaged soon.
+ * The blobs are kept in the object database, so they can be read later.
+ *
+ * @param cwd The working directory.
+ * @returns The changes.
+ */
+async function collectChanges(cwd) {
+    await stageAll(cwd);
+    try {
+        return await getStagedChanges(cwd);
+    }
+    finally {
+        await unstageAll(cwd);
+    }
+}
+/**
+ * Computes the hash of the changes.
+ * It depends only on the paths, the modes and the contents of the changed files,
+ * so the same changes have the same hash even if the base commit is different.
+ *
+ * @param changes The changes.
+ * @returns The hash, e.g. "sha256:0123...".
+ */
+function changesHash(changes) {
+    const entries = changes
+        .map((c) => ({ path: c.path, line: `${c.newMode} ${c.newSha} ${c.path}` }))
+        .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+        .map((e) => e.line);
+    const hash = createHash("sha256");
+    for (const entry of entries) {
+        // paths may contain line separators, so NUL is used as a separator.
+        hash.update(entry);
+        hash.update("\0");
+    }
+    return `sha256:${hash.digest("hex")}`;
+}
+/**
+ * Commits the changes via GitHub API.
  *
  * If all changes are regular files, the commit is created by the
  * createCommitOnBranch GraphQL mutation. Otherwise (executable files,
@@ -30138,31 +30231,20 @@ function isRegularFileChange(change) {
  *
  * @param options The options.
  * @param client The GitHub API client.
- * @returns The commit created, or undefined if there are no changes.
+ * @param changes The changes collected by collectChanges(). It must not be empty.
+ * @returns The commit created.
  */
-async function commit(options, client) {
-    const cwd = options.workingDirectory;
-    await stageAll(cwd);
-    try {
-        const changes = await getStagedChanges(cwd);
-        if (changes.length === 0) {
-            info("No changes to commit.");
-            return undefined;
-        }
-        const created = changes.every(isRegularFileChange)
-            ? await commitWithGraphQL(options, client, changes)
-            : await commitWithGitDatabase(options, client, changes);
-        info(`created: ${created.url}`);
-        if (!created.verified) {
-            warning(`the commit ${created.oid} is not verified. ` +
-                "If the change includes executable files, symbolic links or submodules, " +
-                "the commit is not signed when the token authenticates as a user (e.g. a personal access token). Use GITHUB_TOKEN or a GitHub App token instead.");
-        }
-        return created;
+async function commitChanges(options, client, changes) {
+    const created = changes.every(isRegularFileChange)
+        ? await commitWithGraphQL(options, client, changes)
+        : await commitWithGitDatabase(options, client, changes);
+    info(`created: ${created.url}`);
+    if (!created.verified) {
+        warning(`the commit ${created.oid} is not verified. ` +
+            "If the change includes executable files, symbolic links or submodules, " +
+            "the commit is not signed when the token authenticates as a user (e.g. a personal access token). Use GITHUB_TOKEN or a GitHub App token instead.");
     }
-    finally {
-        await unstageAll(cwd);
-    }
+    return created;
 }
 async function commitWithGraphQL(options, client, changes) {
     const cwd = options.workingDirectory;
@@ -30291,14 +30373,18 @@ function defaultHeadBranch(prefix, run, now = new Date()) {
     const date = now.toISOString().slice(0, 10); // YYYY-MM-DD in UTC
     return `${prefix}${date}-${run.runId}-${run.runAttempt}`;
 }
+/** The prefix of the marker that embeds the hash of the changes into the pull request body. */
+const CHANGES_MARKER_PREFIX = "<!-- actions-commit-and-create-pr:changes=";
 /**
- * Builds the body of the pull request, with a link to the workflow run.
+ * Builds the body of the pull request, with a link to the workflow run,
+ * and a hidden marker of the hash of the changes for detecting duplicates.
  *
  * @param body The body given by the user.
  * @param run The workflow run.
+ * @param hash The hash of the changes, computed by changesHash().
  * @returns The body of the pull request.
  */
-function pullRequestBody(body, run) {
+function pullRequestBody(body, run, hash) {
     const logUrl = `${run.serverUrl}/${run.repository}/actions/runs/${run.runId}/attempts/${run.runAttempt}`;
     return [
         body.trim(),
@@ -30307,7 +30393,44 @@ function pullRequestBody(body, run) {
         "",
         `This pull request is generated by the ${run.workflow} workflow. [See the log](${logUrl}).`,
         "",
+        `${CHANGES_MARKER_PREFIX}${hash} -->`,
+        "",
     ].join("\n");
+}
+/**
+ * Extracts the hashes of the changes from the pull request body.
+ *
+ * @param body The body of the pull request.
+ * @returns The hashes found.
+ */
+function extractChangesHashes(body) {
+    const hashes = [];
+    let idx = body.indexOf(CHANGES_MARKER_PREFIX);
+    while (idx >= 0) {
+        const start = idx + CHANGES_MARKER_PREFIX.length;
+        const end = body.indexOf(" -->", start);
+        if (end < 0) {
+            break;
+        }
+        hashes.push(body.slice(start, end));
+        idx = body.indexOf(CHANGES_MARKER_PREFIX, end);
+    }
+    return hashes;
+}
+/**
+ * Finds an open pull request that has the same changes.
+ * Only pull requests from the same repository are considered,
+ * so that pull requests from forks can't suppress new pull requests.
+ *
+ * @param options The repository, the base branch and the hash of the changes.
+ * @param client The GitHub API client.
+ * @returns The pull request found, or undefined.
+ */
+async function findDuplicatePullRequest(options, client) {
+    info(`searching open pull requests into ${options.baseBranch} with the same changes (${options.hash})`);
+    const pulls = await client.listOpenPullRequests(options.repository, options.baseBranch);
+    return pulls.find((pr) => pr.headRepository === options.repository &&
+        extractChangesHashes(pr.body).includes(options.hash));
 }
 /**
  * Creates a pull request from the head branch to the base branch.
@@ -30358,11 +30481,26 @@ async function run() {
         const title = getInput("title") || splitCommitMessage(commitMessage).headline;
         const body = getInput("body") || commitMessage;
         const workingDirectory = path$1.resolve(getInput("working-directory") || ".");
-        const client = new GitHubClient(token);
-        const created = await commit({ repository, baseBranch, headBranch, commitMessage, workingDirectory }, client);
-        if (!created) {
+        const skipDuplicate = getBooleanInput("skip-duplicate", true);
+        const changes = await collectChanges(workingDirectory);
+        if (changes.length === 0) {
+            info("No changes to commit.");
             return;
         }
+        const hash = changesHash(changes);
+        const client = new GitHubClient(token);
+        if (skipDuplicate) {
+            const duplicate = await findDuplicatePullRequest({ repository, baseBranch, hash }, client);
+            if (duplicate) {
+                info(`skipped: the pull request ${duplicate.url} has the same changes.`);
+                setOutput("head-branch", duplicate.headBranch);
+                setOutput("pr-url", duplicate.url);
+                setOutput("pr-number", duplicate.number);
+                setOutput("duplicated", true);
+                return;
+            }
+        }
+        const created = await commitChanges({ repository, baseBranch, headBranch, commitMessage, workingDirectory }, client, changes);
         setOutput("commit-url", created.url);
         setOutput("commit-sha", created.oid);
         setOutput("head-branch", headBranch);
@@ -30371,10 +30509,11 @@ async function run() {
             baseBranch,
             headBranch,
             title,
-            body: pullRequestBody(body, workflowRun),
+            body: pullRequestBody(body, workflowRun, hash),
         }, client);
         setOutput("pr-url", pr.url);
         setOutput("pr-number", pr.number);
+        setOutput("duplicated", false);
         await checkout({
             workingDirectory,
             headBranch,
@@ -30390,6 +30529,19 @@ async function run() {
             setFailed(String(error));
         }
     }
+}
+/**
+ * Gets a boolean input. Unlike core.getBooleanInput, it returns the default value if the input is empty.
+ *
+ * @param name The name of the input.
+ * @param defaultValue The value used if the input is empty.
+ * @returns The value of the input.
+ */
+function getBooleanInput(name, defaultValue) {
+    if (getInput(name) === "") {
+        return defaultValue;
+    }
+    return getBooleanInput$1(name);
 }
 
 /**

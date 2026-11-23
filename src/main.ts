@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import { createHash } from "node:crypto";
 import * as path from "node:path";
 import {
   FileMode,
@@ -19,6 +20,7 @@ import {
   FileDeletion,
   GitHubClient,
   PullRequest,
+  PullRequestSummary,
   TreeEntry,
 } from "./github.js";
 
@@ -86,12 +88,47 @@ export function isRegularFileChange(change: StagedChange): boolean {
 }
 
 /**
- * Commits all changes in the working directory via GitHub API.
+ * Collects all changes under the working directory.
  *
- * If all changes are regular files, the commit is created by the
- * createCommitOnBranch GraphQL mutation. Otherwise (executable files,
- * symbolic links or submodules are involved), it is created by the Git
- * Database REST API, because the mutation doesn't support file modes.
+ * The changes are staged to compute the SHAs of the new blobs, and unstaged soon.
+ * The blobs are kept in the object database, so they can be read later.
+ *
+ * @param cwd The working directory.
+ * @returns The changes.
+ */
+export async function collectChanges(cwd: string): Promise<StagedChange[]> {
+  await stageAll(cwd);
+  try {
+    return await getStagedChanges(cwd);
+  } finally {
+    await unstageAll(cwd);
+  }
+}
+
+/**
+ * Computes the hash of the changes.
+ * It depends only on the paths, the modes and the contents of the changed files,
+ * so the same changes have the same hash even if the base commit is different.
+ *
+ * @param changes The changes.
+ * @returns The hash, e.g. "sha256:0123...".
+ */
+export function changesHash(changes: StagedChange[]): string {
+  const entries = changes
+    .map((c) => ({ path: c.path, line: `${c.newMode} ${c.newSha} ${c.path}` }))
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+    .map((e) => e.line);
+  const hash = createHash("sha256");
+  for (const entry of entries) {
+    // paths may contain line separators, so NUL is used as a separator.
+    hash.update(entry);
+    hash.update("\0");
+  }
+  return `sha256:${hash.digest("hex")}`;
+}
+
+/**
+ * Commits all changes in the working directory via GitHub API.
  *
  * @param options The options.
  * @param client The GitHub API client.
@@ -101,31 +138,44 @@ export async function commit(
   options: CommitOptions,
   client: Client,
 ): Promise<Commit | undefined> {
-  const cwd = options.workingDirectory;
-
-  await stageAll(cwd);
-  try {
-    const changes = await getStagedChanges(cwd);
-    if (changes.length === 0) {
-      core.info("No changes to commit.");
-      return undefined;
-    }
-
-    const created = changes.every(isRegularFileChange)
-      ? await commitWithGraphQL(options, client, changes)
-      : await commitWithGitDatabase(options, client, changes);
-    core.info(`created: ${created.url}`);
-    if (!created.verified) {
-      core.warning(
-        `the commit ${created.oid} is not verified. ` +
-          "If the change includes executable files, symbolic links or submodules, " +
-          "the commit is not signed when the token authenticates as a user (e.g. a personal access token). Use GITHUB_TOKEN or a GitHub App token instead.",
-      );
-    }
-    return created;
-  } finally {
-    await unstageAll(cwd);
+  const changes = await collectChanges(options.workingDirectory);
+  if (changes.length === 0) {
+    core.info("No changes to commit.");
+    return undefined;
   }
+  return commitChanges(options, client, changes);
+}
+
+/**
+ * Commits the changes via GitHub API.
+ *
+ * If all changes are regular files, the commit is created by the
+ * createCommitOnBranch GraphQL mutation. Otherwise (executable files,
+ * symbolic links or submodules are involved), it is created by the Git
+ * Database REST API, because the mutation doesn't support file modes.
+ *
+ * @param options The options.
+ * @param client The GitHub API client.
+ * @param changes The changes collected by collectChanges(). It must not be empty.
+ * @returns The commit created.
+ */
+export async function commitChanges(
+  options: CommitOptions,
+  client: Client,
+  changes: StagedChange[],
+): Promise<Commit> {
+  const created = changes.every(isRegularFileChange)
+    ? await commitWithGraphQL(options, client, changes)
+    : await commitWithGitDatabase(options, client, changes);
+  core.info(`created: ${created.url}`);
+  if (!created.verified) {
+    core.warning(
+      `the commit ${created.oid} is not verified. ` +
+        "If the change includes executable files, symbolic links or submodules, " +
+        "the commit is not signed when the token authenticates as a user (e.g. a personal access token). Use GITHUB_TOKEN or a GitHub App token instead.",
+    );
+  }
+  return created;
 }
 
 async function commitWithGraphQL(
@@ -323,14 +373,23 @@ export function defaultHeadBranch(
   return `${prefix}${date}-${run.runId}-${run.runAttempt}`;
 }
 
+/** The prefix of the marker that embeds the hash of the changes into the pull request body. */
+const CHANGES_MARKER_PREFIX = "<!-- actions-commit-and-create-pr:changes=";
+
 /**
- * Builds the body of the pull request, with a link to the workflow run.
+ * Builds the body of the pull request, with a link to the workflow run,
+ * and a hidden marker of the hash of the changes for detecting duplicates.
  *
  * @param body The body given by the user.
  * @param run The workflow run.
+ * @param hash The hash of the changes, computed by changesHash().
  * @returns The body of the pull request.
  */
-export function pullRequestBody(body: string, run: WorkflowRun): string {
+export function pullRequestBody(
+  body: string,
+  run: WorkflowRun,
+  hash: string,
+): string {
   const logUrl = `${run.serverUrl}/${run.repository}/actions/runs/${run.runId}/attempts/${run.runAttempt}`;
   return [
     body.trim(),
@@ -339,7 +398,60 @@ export function pullRequestBody(body: string, run: WorkflowRun): string {
     "",
     `This pull request is generated by the ${run.workflow} workflow. [See the log](${logUrl}).`,
     "",
+    `${CHANGES_MARKER_PREFIX}${hash} -->`,
+    "",
   ].join("\n");
+}
+
+/**
+ * Extracts the hashes of the changes from the pull request body.
+ *
+ * @param body The body of the pull request.
+ * @returns The hashes found.
+ */
+export function extractChangesHashes(body: string): string[] {
+  const hashes: string[] = [];
+  let idx = body.indexOf(CHANGES_MARKER_PREFIX);
+  while (idx >= 0) {
+    const start = idx + CHANGES_MARKER_PREFIX.length;
+    const end = body.indexOf(" -->", start);
+    if (end < 0) {
+      break;
+    }
+    hashes.push(body.slice(start, end));
+    idx = body.indexOf(CHANGES_MARKER_PREFIX, end);
+  }
+  return hashes;
+}
+
+/** The subset of GitHubClient that findDuplicatePullRequest() uses. */
+export type ListPullRequestsClient = Pick<GitHubClient, "listOpenPullRequests">;
+
+/**
+ * Finds an open pull request that has the same changes.
+ * Only pull requests from the same repository are considered,
+ * so that pull requests from forks can't suppress new pull requests.
+ *
+ * @param options The repository, the base branch and the hash of the changes.
+ * @param client The GitHub API client.
+ * @returns The pull request found, or undefined.
+ */
+export async function findDuplicatePullRequest(
+  options: { repository: string; baseBranch: string; hash: string },
+  client: ListPullRequestsClient,
+): Promise<PullRequestSummary | undefined> {
+  core.info(
+    `searching open pull requests into ${options.baseBranch} with the same changes (${options.hash})`,
+  );
+  const pulls = await client.listOpenPullRequests(
+    options.repository,
+    options.baseBranch,
+  );
+  return pulls.find(
+    (pr) =>
+      pr.headRepository === options.repository &&
+      extractChangesHashes(pr.body).includes(options.hash),
+  );
 }
 
 /** Options of the pull request. */
@@ -417,15 +529,38 @@ export async function run(): Promise<void> {
     const workingDirectory = path.resolve(
       core.getInput("working-directory") || ".",
     );
+    const skipDuplicate = getBooleanInput("skip-duplicate", true);
 
-    const client = new GitHubClient(token);
-    const created = await commit(
-      { repository, baseBranch, headBranch, commitMessage, workingDirectory },
-      client,
-    );
-    if (!created) {
+    const changes = await collectChanges(workingDirectory);
+    if (changes.length === 0) {
+      core.info("No changes to commit.");
       return;
     }
+    const hash = changesHash(changes);
+
+    const client = new GitHubClient(token);
+    if (skipDuplicate) {
+      const duplicate = await findDuplicatePullRequest(
+        { repository, baseBranch, hash },
+        client,
+      );
+      if (duplicate) {
+        core.info(
+          `skipped: the pull request ${duplicate.url} has the same changes.`,
+        );
+        core.setOutput("head-branch", duplicate.headBranch);
+        core.setOutput("pr-url", duplicate.url);
+        core.setOutput("pr-number", duplicate.number);
+        core.setOutput("duplicated", true);
+        return;
+      }
+    }
+
+    const created = await commitChanges(
+      { repository, baseBranch, headBranch, commitMessage, workingDirectory },
+      client,
+      changes,
+    );
     core.setOutput("commit-url", created.url);
     core.setOutput("commit-sha", created.oid);
     core.setOutput("head-branch", headBranch);
@@ -436,12 +571,13 @@ export async function run(): Promise<void> {
         baseBranch,
         headBranch,
         title,
-        body: pullRequestBody(body, workflowRun),
+        body: pullRequestBody(body, workflowRun, hash),
       },
       client,
     );
     core.setOutput("pr-url", pr.url);
     core.setOutput("pr-number", pr.number);
+    core.setOutput("duplicated", false);
 
     await checkout(
       {
@@ -459,4 +595,18 @@ export async function run(): Promise<void> {
       core.setFailed(String(error));
     }
   }
+}
+
+/**
+ * Gets a boolean input. Unlike core.getBooleanInput, it returns the default value if the input is empty.
+ *
+ * @param name The name of the input.
+ * @param defaultValue The value used if the input is empty.
+ * @returns The value of the input.
+ */
+function getBooleanInput(name: string, defaultValue: boolean): boolean {
+  if (core.getInput(name) === "") {
+    return defaultValue;
+  }
+  return core.getBooleanInput(name);
 }

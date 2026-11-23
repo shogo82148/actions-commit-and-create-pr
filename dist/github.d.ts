@@ -53,6 +53,14 @@ export interface PullRequest {
     number: number;
     url: string;
 }
+/** An open pull request, returned by listOpenPullRequests(). */
+export interface PullRequestSummary extends PullRequest {
+    body: string;
+    /** The name of the head branch. */
+    headBranch: string;
+    /** The repository name with owner of the head branch, or null if the repository is deleted. */
+    headRepository: string | null;
+}
 /** Options of GitHubClient. */
 export interface GitHubClientOptions {
     /** The endpoint of GitHub GraphQL API. */
@@ -161,4 +169,12 @@ export declare class GitHubClient {
      * @returns The pull request created.
      */
     createPullRequest(repository: string, input: CreatePullRequestInput): Promise<PullRequest>;
+    /**
+     * Lists all open pull requests into the base branch.
+     *
+     * @param repository The repository name with owner.
+     * @param base The name of the base branch.
+     * @returns The open pull requests.
+     */
+    listOpenPullRequests(repository: string, base: string): Promise<PullRequestSummary[]>;
 }

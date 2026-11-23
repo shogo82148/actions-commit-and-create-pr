@@ -24,6 +24,8 @@ jobs:
         uses: $/
         with:
           head-branch: ${{ env.HEAD_BRANCH }}
+          # other jobs and concurrent runs make the same changes.
+          skip-duplicate: false
       - name: verify
         run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH" "$BASE_BRANCH" "$PR_URL"
         shell: bash
@@ -57,6 +59,8 @@ jobs:
         uses: $/
         with:
           head-branch: ${{ env.HEAD_BRANCH }}
+          # other jobs and concurrent runs make the same changes.
+          skip-duplicate: false
       - name: verify
         run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH" "$BASE_BRANCH" "$PR_URL"
         shell: bash
@@ -92,6 +96,8 @@ jobs:
         uses: $/
         with:
           head-branch: ${{ env.HEAD_BRANCH }}
+          # other jobs and concurrent runs make the same changes.
+          skip-duplicate: false
       - name: verify
         run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH" "$BASE_BRANCH" "$PR_URL"
         shell: bash
@@ -103,6 +109,81 @@ jobs:
       - name: cleanup
         if: always()
         run: ./testdata/cleanup.sh "$HEAD_BRANCH"
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  test-skip-duplicate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      HEAD_BRANCH: "actions-commit/${{ github.run_id }}-${{ github.run_attempt }}-skip-duplicate"
+      DUPLICATED_BRANCH: "actions-commit/${{ github.run_id }}-${{ github.run_attempt }}-skip-duplicate-2"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: make some changes
+        run: |
+          ./testdata/update.sh
+          # make the changes unique, so that pull requests by other jobs are not considered as duplicates.
+          echo "$HEAD_BRANCH" > testdata/unique.txt
+        shell: bash
+      - id: commit
+        uses: $/
+        with:
+          head-branch: ${{ env.HEAD_BRANCH }}
+      - name: verify
+        run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH" "$BASE_BRANCH" "$PR_URL"
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ steps.commit.outputs.commit-sha }}
+          BASE_BRANCH: ${{ github.ref_name }}
+          PR_URL: ${{ steps.commit.outputs.pr-url }}
+          GH_TOKEN: ${{ github.token }}
+
+      - name: make the same changes again
+        run: |
+          git checkout --quiet --detach "$GITHUB_SHA"
+          ./testdata/update.sh
+          echo "$HEAD_BRANCH" > testdata/unique.txt
+        shell: bash
+      - id: duplicated
+        uses: $/
+        with:
+          head-branch: ${{ env.DUPLICATED_BRANCH }}
+      - name: verify that creating a pull request is skipped
+        run: |
+          set -ue
+          if [[ "$DUPLICATED" != "true" ]]; then
+              echo "::error::duplicated is not true: $DUPLICATED"
+              exit 1
+          fi
+          if [[ "$PR_URL" != "$EXPECTED_PR_URL" || "$OUTPUT_HEAD_BRANCH" != "$HEAD_BRANCH" ]]; then
+              echo "::error::the outputs don't point to the existing pull request: $PR_URL $OUTPUT_HEAD_BRANCH"
+              exit 1
+          fi
+          if [[ -n "$COMMIT_SHA" ]]; then
+              echo "::error::a commit is created: $COMMIT_SHA"
+              exit 1
+          fi
+          if [[ -n "$(git ls-remote --heads origin "refs/heads/$DUPLICATED_BRANCH")" ]]; then
+              echo "::error::the branch $DUPLICATED_BRANCH is created."
+              exit 1
+          fi
+          echo "skipping is OK."
+        shell: bash
+        env:
+          DUPLICATED: ${{ steps.duplicated.outputs.duplicated }}
+          PR_URL: ${{ steps.duplicated.outputs.pr-url }}
+          OUTPUT_HEAD_BRANCH: ${{ steps.duplicated.outputs.head-branch }}
+          COMMIT_SHA: ${{ steps.duplicated.outputs.commit-sha }}
+          EXPECTED_PR_URL: ${{ steps.commit.outputs.pr-url }}
+      - name: cleanup
+        if: always()
+        run: |
+          ./testdata/cleanup.sh "$HEAD_BRANCH"
+          ./testdata/cleanup.sh "$DUPLICATED_BRANCH"
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

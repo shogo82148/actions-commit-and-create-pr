@@ -1,5 +1,5 @@
 import { StagedChange } from "./git.js";
-import { Commit, GitHubClient, PullRequest } from "./github.js";
+import { Commit, GitHubClient, PullRequest, PullRequestSummary } from "./github.js";
 /** Options of the commit. */
 export interface CommitOptions {
     /** The repository name with owner, e.g. "octocat/hello-world". */
@@ -30,7 +30,34 @@ export declare function splitCommitMessage(message: string): {
  */
 export declare function isRegularFileChange(change: StagedChange): boolean;
 /**
+ * Collects all changes under the working directory.
+ *
+ * The changes are staged to compute the SHAs of the new blobs, and unstaged soon.
+ * The blobs are kept in the object database, so they can be read later.
+ *
+ * @param cwd The working directory.
+ * @returns The changes.
+ */
+export declare function collectChanges(cwd: string): Promise<StagedChange[]>;
+/**
+ * Computes the hash of the changes.
+ * It depends only on the paths, the modes and the contents of the changed files,
+ * so the same changes have the same hash even if the base commit is different.
+ *
+ * @param changes The changes.
+ * @returns The hash, e.g. "sha256:0123...".
+ */
+export declare function changesHash(changes: StagedChange[]): string;
+/**
  * Commits all changes in the working directory via GitHub API.
+ *
+ * @param options The options.
+ * @param client The GitHub API client.
+ * @returns The commit created, or undefined if there are no changes.
+ */
+export declare function commit(options: CommitOptions, client: Client): Promise<Commit | undefined>;
+/**
+ * Commits the changes via GitHub API.
  *
  * If all changes are regular files, the commit is created by the
  * createCommitOnBranch GraphQL mutation. Otherwise (executable files,
@@ -39,9 +66,10 @@ export declare function isRegularFileChange(change: StagedChange): boolean;
  *
  * @param options The options.
  * @param client The GitHub API client.
- * @returns The commit created, or undefined if there are no changes.
+ * @param changes The changes collected by collectChanges(). It must not be empty.
+ * @returns The commit created.
  */
-export declare function commit(options: CommitOptions, client: Client): Promise<Commit | undefined>;
+export declare function commitChanges(options: CommitOptions, client: Client, changes: StagedChange[]): Promise<Commit>;
 /** Options of the checkout after the commit. */
 export interface CheckoutOptions {
     workingDirectory: string;
@@ -85,13 +113,38 @@ export interface WorkflowRun {
  */
 export declare function defaultHeadBranch(prefix: string, run: Pick<WorkflowRun, "runId" | "runAttempt">, now?: Date): string;
 /**
- * Builds the body of the pull request, with a link to the workflow run.
+ * Builds the body of the pull request, with a link to the workflow run,
+ * and a hidden marker of the hash of the changes for detecting duplicates.
  *
  * @param body The body given by the user.
  * @param run The workflow run.
+ * @param hash The hash of the changes, computed by changesHash().
  * @returns The body of the pull request.
  */
-export declare function pullRequestBody(body: string, run: WorkflowRun): string;
+export declare function pullRequestBody(body: string, run: WorkflowRun, hash: string): string;
+/**
+ * Extracts the hashes of the changes from the pull request body.
+ *
+ * @param body The body of the pull request.
+ * @returns The hashes found.
+ */
+export declare function extractChangesHashes(body: string): string[];
+/** The subset of GitHubClient that findDuplicatePullRequest() uses. */
+export type ListPullRequestsClient = Pick<GitHubClient, "listOpenPullRequests">;
+/**
+ * Finds an open pull request that has the same changes.
+ * Only pull requests from the same repository are considered,
+ * so that pull requests from forks can't suppress new pull requests.
+ *
+ * @param options The repository, the base branch and the hash of the changes.
+ * @param client The GitHub API client.
+ * @returns The pull request found, or undefined.
+ */
+export declare function findDuplicatePullRequest(options: {
+    repository: string;
+    baseBranch: string;
+    hash: string;
+}, client: ListPullRequestsClient): Promise<PullRequestSummary | undefined>;
 /** Options of the pull request. */
 export interface PullRequestOptions {
     /** The repository name with owner, e.g. "octocat/hello-world". */
