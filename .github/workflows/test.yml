@@ -289,3 +289,92 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # TEMPORARY: checks how GitHub handles labels that don't exist. Not to be merged.
+  label-behavior-pull-requests-write:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      HEAD_BRANCH: "actions-commit/${{ github.run_id }}-label-behavior-pull-requests-write"
+      LABEL: "label-behavior-test-pull-requests-write-${{ github.run_id }}"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: make some changes
+        run: |
+          ./testdata/update.sh
+          echo "$HEAD_BRANCH" > testdata/unique.txt
+        shell: bash
+      - id: commit
+        uses: $/
+        continue-on-error: true
+        with:
+          head-branch: ${{ env.HEAD_BRANCH }}
+          skip-duplicate: false
+          labels: ${{ env.LABEL }}, documentation
+      - name: report
+        if: always()
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "pr: $PR_URL"
+          echo "labels on the pull request:"
+          gh pr view "$PR_URL" --json labels --jq '[.labels[].name]'
+          echo "labels in the repository:"
+          gh label list --search "$LABEL" --json name,color,description
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.commit.outcome }}
+          PR_URL: ${{ steps.commit.outputs.pr-url }}
+          GH_TOKEN: ${{ github.token }}
+      - name: cleanup
+        if: always()
+        run: ./testdata/cleanup.sh "$HEAD_BRANCH"
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # TEMPORARY: checks how GitHub handles labels that don't exist. Not to be merged.
+  label-behavior-issues-write:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      HEAD_BRANCH: "actions-commit/${{ github.run_id }}-label-behavior-issues-write"
+      LABEL: "label-behavior-test-issues-write-${{ github.run_id }}"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: make some changes
+        run: |
+          ./testdata/update.sh
+          echo "$HEAD_BRANCH" > testdata/unique.txt
+        shell: bash
+      - id: commit
+        uses: $/
+        continue-on-error: true
+        with:
+          head-branch: ${{ env.HEAD_BRANCH }}
+          skip-duplicate: false
+          labels: ${{ env.LABEL }}, documentation
+      - name: report
+        if: always()
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "pr: $PR_URL"
+          echo "labels on the pull request:"
+          gh pr view "$PR_URL" --json labels --jq '[.labels[].name]'
+          echo "labels in the repository:"
+          gh label list --search "$LABEL" --json name,color,description
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.commit.outcome }}
+          PR_URL: ${{ steps.commit.outputs.pr-url }}
+          GH_TOKEN: ${{ github.token }}
+      - name: cleanup
+        if: always()
+        run: ./testdata/cleanup.sh "$HEAD_BRANCH"
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
