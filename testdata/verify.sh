@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 
 # verify that the action checked out the commit, and the commit has the same tree as the local changes.
-# usage: verify.sh COMMIT_SHA HEAD_BRANCH
+# usage: verify.sh COMMIT_SHA HEAD_BRANCH BASE_BRANCH PR_URL
 
 set -ue
 
 SHA=$1
 BRANCH=$2
+BASE_BRANCH=$3
+PR_URL=$4
 
 CURRENT=$(cd "$(dirname "$0")" && pwd)
 cd "$CURRENT/.."
@@ -47,3 +49,11 @@ if [[ "$VERIFIED" != "true" ]]; then
     exit 1
 fi
 echo "signature is OK."
+
+# the action should create a pull request from the head branch to the base branch.
+PR=$(gh pr view "$PR_URL" --json headRefName,baseRefName,headRefOid,state --jq '"\(.headRefName) \(.baseRefName) \(.headRefOid) \(.state)"')
+if [[ "$PR" != "$BRANCH $BASE_BRANCH $SHA OPEN" ]]; then
+    echo "::error::the pull request is not matched. expected: $BRANCH $BASE_BRANCH $SHA OPEN, actual: $PR"
+    exit 1
+fi
+echo "pull request is OK."

@@ -125,4 +125,51 @@ describe("GitHubClient", () => {
       force: false,
     });
   });
+
+  it("creates a pull request", async () => {
+    const fetch = fakeFetch(201, {
+      number: 42,
+      html_url: "https://example.com/o/r/pull/42",
+    });
+    const client = new GitHubClient("token", {
+      apiUrl: "https://api.example.com",
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    });
+    const pr = await client.createPullRequest("o/r", {
+      title: "title",
+      body: "body",
+      base: "main",
+      head: "topic",
+    });
+
+    expect(pr).toEqual({ number: 42, url: "https://example.com/o/r/pull/42" });
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe("https://api.example.com/repos/o/r/pulls");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual({
+      title: "title",
+      body: "body",
+      base: "main",
+      head: "topic",
+    });
+  });
+
+  it("throws an error if the pull request can't be created", async () => {
+    const fetch = fakeFetch(422, {
+      message: "Validation Failed",
+      errors: [{ message: "A pull request already exists for o:topic." }],
+    });
+    const client = new GitHubClient("token", {
+      apiUrl: "https://api.example.com",
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    });
+    await expect(
+      client.createPullRequest("o/r", {
+        title: "title",
+        body: "body",
+        base: "main",
+        head: "topic",
+      }),
+    ).rejects.toThrow(/422.*A pull request already exists/);
+  });
 });

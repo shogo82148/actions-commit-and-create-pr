@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     env:
       HEAD_BRANCH: "actions-commit/${{ github.run_id }}-${{ github.run_attempt }}"
     steps:
@@ -24,10 +25,12 @@ jobs:
         with:
           head-branch: ${{ env.HEAD_BRANCH }}
       - name: verify
-        run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH"
+        run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH" "$BASE_BRANCH" "$PR_URL"
         shell: bash
         env:
           COMMIT_SHA: ${{ steps.commit.outputs.commit-sha }}
+          BASE_BRANCH: ${{ github.ref_name }}
+          PR_URL: ${{ steps.commit.outputs.pr-url }}
           GH_TOKEN: ${{ github.token }}
       - name: cleanup
         if: always()
@@ -40,6 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     env:
       HEAD_BRANCH: "actions-commit/${{ github.run_id }}-${{ github.run_attempt }}-file-modes"
     steps:
@@ -54,10 +58,12 @@ jobs:
         with:
           head-branch: ${{ env.HEAD_BRANCH }}
       - name: verify
-        run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH"
+        run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH" "$BASE_BRANCH" "$PR_URL"
         shell: bash
         env:
           COMMIT_SHA: ${{ steps.commit.outputs.commit-sha }}
+          BASE_BRANCH: ${{ github.ref_name }}
+          PR_URL: ${{ steps.commit.outputs.pr-url }}
           GH_TOKEN: ${{ github.token }}
       - name: cleanup
         if: always()
@@ -72,6 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     env:
       HEAD_BRANCH: "actions-commit/${{ github.run_id }}-${{ github.run_attempt }}-without-persisted-credentials"
     steps:
@@ -86,10 +93,12 @@ jobs:
         with:
           head-branch: ${{ env.HEAD_BRANCH }}
       - name: verify
-        run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH"
+        run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH" "$BASE_BRANCH" "$PR_URL"
         shell: bash
         env:
           COMMIT_SHA: ${{ steps.commit.outputs.commit-sha }}
+          BASE_BRANCH: ${{ github.ref_name }}
+          PR_URL: ${{ steps.commit.outputs.pr-url }}
           GH_TOKEN: ${{ github.token }}
       - name: cleanup
         if: always()

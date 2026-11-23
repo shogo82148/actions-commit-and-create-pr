@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 # delete the branch created by the test.
+# the pull request created by the test is closed automatically when its head branch is deleted.
 # usage: cleanup.sh BRANCH
 
 set -ue

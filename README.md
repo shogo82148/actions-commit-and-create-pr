@@ -15,6 +15,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v3
       - name: make some changes
@@ -24,11 +27,17 @@ jobs:
         uses: shogo82148/actions-commit-and-create-pr@v1
 ```
 
-## Limitation
+## Permissions
 
-Currently (on 2022-01-03), the [createCommitOnBranch](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch) mutation doesn't support file types (i.e. regular file, symlink, submodule, ...).
-All files will be committed as regular files.
-You can't create executable files, symlinks, submodules, and so on.
+The token needs the `contents: write` permission to create a branch and a commit,
+and the `pull-requests: write` permission to create a pull request.
+If you use `GITHUB_TOKEN`, you also need to enable "Allow GitHub Actions to create and approve pull requests" in the repository settings.
+
+## File Modes
+
+If all changes are regular files, the action uses the [createCommitOnBranch](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch) mutation.
+Otherwise (executable files, symbolic links or submodules are involved), it uses the [Git Database API](https://docs.github.com/en/rest/git), because the mutation doesn't support file modes.
+In that case, the commit is signed only when the token belongs to a GitHub App (e.g. `GITHUB_TOKEN`), not a user (e.g. a personal access token).
 
 ## Inputs
 
@@ -42,7 +51,7 @@ The base branch. The default is the branch name that triggered the workflow run.
 
 ### head-branch
 
-The head branch. The default is `actions-commit-and-create-pr/$(date -u '+%Y-%m-%d')-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT`.
+The head branch. It must be different from `base-branch`. The default is `actions-commit-and-create-pr/$(date -u '+%Y-%m-%d')-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT`.
 
 ### head-branch-prefix
 
@@ -55,15 +64,47 @@ The default is `actions-commit-and-create-pr/`.
 The commit message.
 The default is "Auto updates by the $GITHUB_WORKFLOW workflow".
 
+### working-directory
+
+The directory that contains changes to commit.
+Only changes under the directory are committed.
+The default is `.`.
+
 ### title
 
 The title of pull requests.
-The default is same as the commit message.
+The default is the first line of the commit message.
 
 ### body
 
 The body of a pull request.
 The default is same as the commit message.
+A link to the workflow run is appended to the body.
+
+## Outputs
+
+If there are no changes, the action does nothing and the outputs are empty.
+
+### commit-url
+
+The URL of the commit created.
+
+### commit-sha
+
+The SHA of the commit created.
+After the action, the head branch is checked out at the commit.
+
+### head-branch
+
+The name of the head branch created.
+
+### pr-url
+
+The URL of the pull request created.
+
+### pr-number
+
+The number of the pull request created.
 
 ## Related Works
 

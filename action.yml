@@ -10,7 +10,7 @@ inputs:
     required: true
     default: "${{ github.ref_name }}"
   head-branch:
-    description: "The head branch"
+    description: "The head branch. It must be different from the base branch"
     required: false
   head-branch-prefix:
     description: "The prefix of the head branch"
@@ -25,13 +25,21 @@ inputs:
   commit-message:
     description: "The commit message"
     required: false
+  working-directory:
+    description: "The directory that contains changes to commit"
+    required: false
+    default: "."
 outputs:
   commit-url:
     description: "The URL of a commit created"
-    value: ${{ steps.commit-and-create-pr.outputs.commit-url }}
+  commit-sha:
+    description: "The SHA of a commit created"
+  head-branch:
+    description: "The name of the head branch created"
   pr-url:
     description: "The URL of a pull request created"
-    value: ${{ steps.commit-and-create-pr.outputs.pr-url }}
+  pr-number:
+    description: "The number of a pull request created"
 runs:
   using: "node24"
   main: "dist/index.js"
