@@ -2,31 +2,98 @@ name: test
 on:
   push:
     branches-ignore:
-      - 'actions-commit-and-create-pr/*'
+      - "actions-commit/*"
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      HEAD_BRANCH: "actions-commit/${{ github.run_id }}-${{ github.run_attempt }}"
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: ./
+      - uses: $/
         with:
           github-token: "this token should be not used because there is no changes"
       - name: make some changes
         run: ./testdata/update.sh
         shell: bash
       - id: commit
-        uses: ./
+        uses: $/
+        with:
+          head-branch: ${{ env.HEAD_BRANCH }}
       - name: verify
-        run: |
-          ./testdata/verify.sh ${{ steps.commit.outputs.pr-url }}
+        run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH"
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-      - name: clean up
+          COMMIT_SHA: ${{ steps.commit.outputs.commit-sha }}
+          GH_TOKEN: ${{ github.token }}
+      - name: cleanup
         if: always()
-        run: |
-          gh pr close --delete-branch ${{ steps.commit.outputs.pr-url }} || true
+        run: ./testdata/cleanup.sh "$HEAD_BRANCH"
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+
+  test-file-modes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      HEAD_BRANCH: "actions-commit/${{ github.run_id }}-${{ github.run_attempt }}-file-modes"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: make some changes
+        run: |
+          ./testdata/update.sh
+          ./testdata/update-file-modes.sh
+        shell: bash
+      - id: commit
+        uses: $/
+        with:
+          head-branch: ${{ env.HEAD_BRANCH }}
+      - name: verify
+        run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH"
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ steps.commit.outputs.commit-sha }}
+          GH_TOKEN: ${{ github.token }}
+      - name: cleanup
+        if: always()
+        run: ./testdata/cleanup.sh "$HEAD_BRANCH"
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # the action should work without credentials persisted by actions/checkout,
+  # because it fetches the commit with the github-token input.
+  test-without-persisted-credentials:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      HEAD_BRANCH: "actions-commit/${{ github.run_id }}-${{ github.run_attempt }}-without-persisted-credentials"
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: make some changes
+        run: ./testdata/update.sh
+        shell: bash
+      - id: commit
+        uses: $/
+        with:
+          head-branch: ${{ env.HEAD_BRANCH }}
+      - name: verify
+        run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH"
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ steps.commit.outputs.commit-sha }}
+          GH_TOKEN: ${{ github.token }}
+      - name: cleanup
+        if: always()
+        run: ./testdata/cleanup.sh "$HEAD_BRANCH"
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}

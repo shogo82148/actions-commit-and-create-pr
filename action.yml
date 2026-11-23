@@ -1,29 +1,29 @@
-name: 'Commit and Create a Pull Request'
-description: 'Commit and Create a Pull Request'
+name: "Commit and Create a Pull Request"
+description: "Commit and Create a Pull Request"
 inputs:
   github-token:
-    description: 'The GitHub Token'
+    description: "The GitHub Token"
     required: true
-    default: '${{ github.token }}'
+    default: "${{ github.token }}"
   base-branch:
-    description: 'The base branch'
+    description: "The base branch"
     required: true
-    default: '${{ github.ref_name }}'
+    default: "${{ github.ref_name }}"
   head-branch:
-    description: 'The head branch'
+    description: "The head branch"
     required: false
   head-branch-prefix:
-    description: 'The prefix of the head branch'
+    description: "The prefix of the head branch"
     required: false
-    default: 'actions-commit-and-create-pr/'
+    default: "actions-commit-and-create-pr/"
   title:
-    description: 'The title of a pull request'
+    description: "The title of a pull request"
     required: false
   body:
-    description: 'The body of a pull request'
+    description: "The body of a pull request"
     required: false
   commit-message:
-    description: 'The commit message'
+    description: "The commit message"
     required: false
 outputs:
   commit-url:
@@ -33,16 +33,5 @@ outputs:
     description: "The URL of a pull request created"
     value: ${{ steps.commit-and-create-pr.outputs.pr-url }}
 runs:
-  using: "composite"
-  steps:
-    - id: commit-and-create-pr
-      run: ${{ github.action_path }}/commit-and-create-pr.sh
-      shell: bash
-      env:
-        GITHUB_TOKEN: '${{ inputs.github-token }}'
-        INPUT_BASE_BRANCH: '${{ inputs.base-branch }}'
-        INPUT_HEAD_BRANCH: '${{ inputs.head-branch }}'
-        INPUT_HEAD_BRANCH_PREFIX: '${{ inputs.head-branch-prefix }}'
-        INPUT_TITLE: '${{ inputs.title }}'
-        INPUT_BODY: '${{ inputs.body }}'
-        INPUT_COMMIT_MESSAGE: '${{ inputs.commit-message }}'
+  using: "node24"
+  main: "dist/index.js"
