@@ -187,3 +187,89 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+
+  test-close-superseded:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      OLD_BRANCH: "actions-commit/${{ github.run_id }}-${{ github.run_attempt }}-close-superseded-old"
+      NEW_BRANCH: "actions-commit/${{ github.run_id }}-${{ github.run_attempt }}-close-superseded-new"
+      # use a unique group, so that pull requests by concurrent runs are not closed.
+      GROUP: "test-close-superseded-${{ github.run_id }}-${{ github.run_attempt }}"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: make some changes
+        run: |
+          ./testdata/update.sh
+          echo "$OLD_BRANCH" > testdata/unique.txt
+        shell: bash
+      - id: old
+        uses: $/
+        with:
+          head-branch: ${{ env.OLD_BRANCH }}
+          group: ${{ env.GROUP }}
+          close-superseded: true
+
+      - name: make different changes
+        run: |
+          git checkout --quiet --detach "$GITHUB_SHA"
+          ./testdata/update.sh
+          echo "$NEW_BRANCH" > testdata/unique.txt
+        shell: bash
+      - id: new
+        uses: $/
+        with:
+          head-branch: ${{ env.NEW_BRANCH }}
+          group: ${{ env.GROUP }}
+          close-superseded: true
+      - name: verify the new pull request
+        run: ./testdata/verify.sh "$COMMIT_SHA" "$NEW_BRANCH" "$BASE_BRANCH" "$PR_URL"
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ steps.new.outputs.commit-sha }}
+          BASE_BRANCH: ${{ github.ref_name }}
+          PR_URL: ${{ steps.new.outputs.pr-url }}
+          GH_TOKEN: ${{ github.token }}
+      - name: verify that the old pull request is closed
+        run: |
+          set -ue
+          if [[ "$OLD_CLOSED" != "[]" ]]; then
+              echo "::error::the first run closed pull requests: $OLD_CLOSED"
+              exit 1
+          fi
+          if [[ "$NEW_CLOSED" != "[$OLD_PR_NUMBER]" ]]; then
+              echo "::error::closed-pull-requests is not matched. expected: [$OLD_PR_NUMBER], actual: $NEW_CLOSED"
+              exit 1
+          fi
+          STATE=$(gh pr view "$OLD_PR_NUMBER" --json state --jq '.state')
+          if [[ "$STATE" != "CLOSED" ]]; then
+              echo "::error::the old pull request is not closed: $STATE"
+              exit 1
+          fi
+          COMMENTS=$(gh pr view "$OLD_PR_NUMBER" --json comments --jq '.comments[].body')
+          if [[ "$COMMENTS" != *"superseded by #$NEW_PR_NUMBER"* ]]; then
+              echo "::error::the old pull request doesn't have the comment: $COMMENTS"
+              exit 1
+          fi
+          if [[ -n "$(git ls-remote --heads origin "refs/heads/$OLD_BRANCH")" ]]; then
+              echo "::error::the branch $OLD_BRANCH is not deleted."
+              exit 1
+          fi
+          echo "closing is OK."
+        shell: bash
+        env:
+          OLD_PR_NUMBER: ${{ steps.old.outputs.pr-number }}
+          OLD_CLOSED: ${{ steps.old.outputs.closed-pull-requests }}
+          NEW_PR_NUMBER: ${{ steps.new.outputs.pr-number }}
+          NEW_CLOSED: ${{ steps.new.outputs.closed-pull-requests }}
+          GH_TOKEN: ${{ github.token }}
+      - name: cleanup
+        if: always()
+        run: |
+          ./testdata/cleanup.sh "$OLD_BRANCH"
+          ./testdata/cleanup.sh "$NEW_BRANCH"
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}

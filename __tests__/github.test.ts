@@ -178,7 +178,7 @@ describe("GitHubClient", () => {
       number: n,
       html_url: `https://example.com/o/r/pull/${n}`,
       body: n === 1 ? null : `body ${n}`,
-      head: { ref: `topic-${n}`, repo },
+      head: { ref: `topic-${n}`, sha: `sha-${n}`, repo },
     });
     const pages = [
       Array.from({ length: 100 }, (_, i) => pull(i + 1, { full_name: "o/r" })),
@@ -202,6 +202,7 @@ describe("GitHubClient", () => {
       url: "https://example.com/o/r/pull/1",
       body: "",
       headBranch: "topic-1",
+      headSha: "sha-1",
       headRepository: "o/r",
     });
     expect(pulls[100]).toEqual({
@@ -209,6 +210,7 @@ describe("GitHubClient", () => {
       url: "https://example.com/o/r/pull/101",
       body: "body 101",
       headBranch: "topic-101",
+      headSha: "sha-101",
       headRepository: null,
     });
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -222,5 +224,45 @@ describe("GitHubClient", () => {
     });
     expect(urls[1].searchParams.get("page")).toBe("2");
     expect(fetch.mock.calls[0][1]?.method).toBe("GET");
+  });
+
+  it("closes a pull request with a comment, and deletes the branch", async () => {
+    const fetch = jest.fn<
+      (input: string, init?: RequestInit) => Promise<Response>
+    >(async (_input, init) =>
+      init?.method === "DELETE"
+        ? new Response(null, { status: 204 })
+        : new Response("{}", { status: 200 }),
+    );
+    const client = new GitHubClient("token", {
+      apiUrl: "https://api.example.com",
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    });
+    await client.createIssueComment("o/r", 3, "superseded");
+    await client.closePullRequest("o/r", 3);
+    await client.deleteRef("o/r", "feature/foo bar");
+
+    const calls = fetch.mock.calls.map(([url, init]) => [
+      init?.method,
+      url,
+      init?.body === undefined ? undefined : JSON.parse(init.body as string),
+    ]);
+    expect(calls).toEqual([
+      [
+        "POST",
+        "https://api.example.com/repos/o/r/issues/3/comments",
+        { body: "superseded" },
+      ],
+      [
+        "PATCH",
+        "https://api.example.com/repos/o/r/pulls/3",
+        { state: "closed" },
+      ],
+      [
+        "DELETE",
+        "https://api.example.com/repos/o/r/git/refs/heads/feature/foo%20bar",
+        undefined,
+      ],
+    ]);
   });
 });

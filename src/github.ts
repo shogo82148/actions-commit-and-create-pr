@@ -65,6 +65,8 @@ export interface PullRequestSummary extends PullRequest {
   body: string;
   /** The name of the head branch. */
   headBranch: string;
+  /** The SHA of the head commit. */
+  headSha: string;
   /** The repository name with owner of the head branch, or null if the repository is deleted. */
   headRepository: string | null;
 }
@@ -171,7 +173,8 @@ export class GitHubClient {
         `GitHub REST API ${method} ${path} returned ${res.status} ${res.statusText}: ${text}`,
       );
     }
-    return JSON.parse(text) as T;
+    // some APIs return no content, e.g. 204 No Content of deleting a reference.
+    return (text === "" ? undefined : JSON.parse(text)) as T;
   }
 
   /**
@@ -334,6 +337,17 @@ export class GitHubClient {
   }
 
   /**
+   * Deletes a branch.
+   *
+   * @param repository The repository name with owner.
+   * @param branch The name of the branch.
+   */
+  async deleteRef(repository: string, branch: string): Promise<void> {
+    const ref = branch.split("/").map(encodeURIComponent).join("/");
+    await this.rest("DELETE", `/repos/${repository}/git/refs/heads/${ref}`);
+  }
+
+  /**
    * Updates a branch. It fails if the update is not a fast-forward.
    *
    * @param repository The repository name with owner.
@@ -401,7 +415,11 @@ export class GitHubClient {
           number: number;
           html_url: string;
           body: string | null;
-          head: { ref: string; repo: { full_name: string } | null };
+          head: {
+            ref: string;
+            sha: string;
+            repo: { full_name: string } | null;
+          };
         }[]
       >("GET", `/repos/${repository}/pulls?${query.toString()}`);
       for (const pr of data) {
@@ -410,6 +428,7 @@ export class GitHubClient {
           url: pr.html_url,
           body: pr.body ?? "",
           headBranch: pr.head.ref,
+          headSha: pr.head.sha,
           headRepository: pr.head.repo?.full_name ?? null,
         });
       }
@@ -417,5 +436,34 @@ export class GitHubClient {
         return result;
       }
     }
+  }
+
+  /**
+   * Creates a comment on a pull request.
+   *
+   * @param repository The repository name with owner.
+   * @param number The number of the pull request.
+   * @param body The body of the comment.
+   */
+  async createIssueComment(
+    repository: string,
+    number: number,
+    body: string,
+  ): Promise<void> {
+    await this.rest("POST", `/repos/${repository}/issues/${number}/comments`, {
+      body,
+    });
+  }
+
+  /**
+   * Closes a pull request.
+   *
+   * @param repository The repository name with owner.
+   * @param number The number of the pull request.
+   */
+  async closePullRequest(repository: string, number: number): Promise<void> {
+    await this.rest("PATCH", `/repos/${repository}/pulls/${number}`, {
+      state: "closed",
+    });
   }
 }

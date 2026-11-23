@@ -58,6 +58,8 @@ export interface PullRequestSummary extends PullRequest {
     body: string;
     /** The name of the head branch. */
     headBranch: string;
+    /** The SHA of the head commit. */
+    headSha: string;
     /** The repository name with owner of the head branch, or null if the repository is deleted. */
     headRepository: string | null;
 }
@@ -154,6 +156,13 @@ export declare class GitHubClient {
      */
     createRef(repository: string, branch: string, sha: string): Promise<void>;
     /**
+     * Deletes a branch.
+     *
+     * @param repository The repository name with owner.
+     * @param branch The name of the branch.
+     */
+    deleteRef(repository: string, branch: string): Promise<void>;
+    /**
      * Updates a branch. It fails if the update is not a fast-forward.
      *
      * @param repository The repository name with owner.
@@ -177,4 +186,19 @@ export declare class GitHubClient {
      * @returns The open pull requests.
      */
     listOpenPullRequests(repository: string, base: string): Promise<PullRequestSummary[]>;
+    /**
+     * Creates a comment on a pull request.
+     *
+     * @param repository The repository name with owner.
+     * @param number The number of the pull request.
+     * @param body The body of the comment.
+     */
+    createIssueComment(repository: string, number: number, body: string): Promise<void>;
+    /**
+     * Closes a pull request.
+     *
+     * @param repository The repository name with owner.
+     * @param number The number of the pull request.
+     */
+    closePullRequest(repository: string, number: number): Promise<void>;
 }
