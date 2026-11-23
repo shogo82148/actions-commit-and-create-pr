@@ -1248,6 +1248,18 @@ describe("run", () => {
         });
       });
 
+      it("suggests the issues: write permission on 422", async () => {
+        const head = await setupRemote();
+        fakeApi(422, head);
+
+        await run();
+
+        expect(process.exitCode).toBe(1);
+        expect(written.join("")).toMatch(
+          /::error::failed to add labels to .*422.* Labels that don't exist are created only if the token has the issues: write permission\./,
+        );
+      });
+
       it("doesn't add labels to a duplicate pull request", async () => {
         fakeFetch([
           {

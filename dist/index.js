@@ -30709,7 +30709,12 @@ async function run() {
             catch (error) {
                 // the action fails, but it continues the rest,
                 // because the pull request has already been created.
-                setFailed(`failed to add labels to ${pr.url}: ${errorMessage(error)}`);
+                const message = errorMessage(error);
+                // GitHub returns 422 if a label doesn't exist and the token can't create it.
+                const hint = message.includes(" 422 ")
+                    ? " Labels that don't exist are created only if the token has the issues: write permission."
+                    : "";
+                setFailed(`failed to add labels to ${pr.url}: ${message}${hint}`);
             }
         }
         if (closeSuperseded) {
