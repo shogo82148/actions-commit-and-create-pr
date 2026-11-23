@@ -22,6 +22,9 @@ inputs:
   body:
     description: "The body of a pull request"
     required: false
+  labels:
+    description: "The labels added to a pull request, separated by commas or newlines"
+    required: false
   commit-message:
     description: "The commit message"
     required: false

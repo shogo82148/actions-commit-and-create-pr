@@ -23,6 +23,7 @@ import {
   findDuplicatePullRequest,
   findSupersededPullRequests,
   marker,
+  parseLabels,
   pullRequestBody,
   run,
   splitCommitMessage,
@@ -887,6 +888,17 @@ describe("closeSupersededPullRequests", () => {
   });
 });
 
+describe("parseLabels", () => {
+  it("splits labels by commas and newlines", () => {
+    expect(parseLabels(" a, b \r\n\nc\n a ,,")).toEqual(["a", "b", "c"]);
+  });
+
+  it("returns an empty list for an empty input", () => {
+    expect(parseLabels("")).toEqual([]);
+    expect(parseLabels(" ,\n")).toEqual([]);
+  });
+});
+
 describe("createPullRequest", () => {
   it("creates a pull request from the head branch to the base branch", async () => {
     const client = {
@@ -1131,6 +1143,126 @@ describe("run", () => {
       });
       // the checkout fails because of the fake server.
       expect(process.exitCode).toBe(1);
+    });
+
+    describe("labels", () => {
+      let requests: { method: string; url: string; body: string }[];
+
+      // fakes the API to create a commit and a pull request.
+      function fakeApi(labelStatus: number, oid = "c0ffee") {
+        requests = [];
+        jest
+          .spyOn(globalThis, "fetch")
+          .mockImplementation(async (input, init) => {
+            const method = init?.method ?? "GET";
+            const url = String(input);
+            const body = String(init?.body ?? "");
+            requests.push({ method, url, body });
+            const json = (data: unknown, status = 200) =>
+              new Response(JSON.stringify(data), { status });
+            if (url.includes("/graphql")) {
+              if (body.includes("createCommitOnBranch(")) {
+                return json({
+                  data: {
+                    createCommitOnBranch: {
+                      commit: {
+                        oid,
+                        url: "u",
+                        signature: { isValid: true },
+                      },
+                    },
+                  },
+                });
+              }
+              if (body.includes("createRef(")) {
+                return json({
+                  data: { createRef: { clientMutationId: null } },
+                });
+              }
+              return json({ data: { repository: { id: "R_1" } } });
+            }
+            if (method === "GET" && url.includes("/pulls?")) {
+              return json([]);
+            }
+            if (method === "POST" && url.endsWith("/pulls")) {
+              return json(
+                { number: 10, html_url: "https://github.com/o/r/pull/10" },
+                201,
+              );
+            }
+            if (url.endsWith("/issues/10/labels")) {
+              return json({ message: "label error" }, labelStatus);
+            }
+            return json({});
+          });
+      }
+
+      // makes the checkout succeed: the fake API returns HEAD as the created commit,
+      // and the remote repository has it.
+      async function setupRemote(): Promise<string> {
+        const server = path.join(tmp, "server");
+        const remote = path.join(server, "o", "r");
+        await fs.mkdir(remote, { recursive: true });
+        await git(["init", "--quiet", "--bare", remote], tmp);
+        await git(["push", "--quiet", remote, "HEAD:refs/heads/topic"], dir);
+        process.env.GITHUB_SERVER_URL = `file://${server}`;
+        return (await git(["rev-parse", "HEAD"], dir)).toString().trim();
+      }
+
+      beforeEach(() => {
+        process.env.INPUT_LABELS = "bug, enhancement\nbug";
+      });
+
+      it("adds labels to the new pull request", async () => {
+        fakeApi(200);
+        process.env.GITHUB_SERVER_URL = `file://${tmp}/no-such-server`;
+
+        await run();
+
+        const label = requests.find((r) => r.url.endsWith("/labels"));
+        expect(label?.method).toBe("POST");
+        expect(label?.url).toBe(
+          "https://api.example.com/repos/o/r/issues/10/labels",
+        );
+        expect(JSON.parse(label?.body ?? "{}")).toEqual({
+          labels: ["bug", "enhancement"],
+        });
+      });
+
+      it("fails after finishing the rest if it can't add labels", async () => {
+        const head = await setupRemote();
+        fakeApi(403, head);
+
+        await run();
+
+        expect(process.exitCode).toBe(1);
+        // the checkout is done.
+        const branch = await git(["symbolic-ref", "--short", "HEAD"], dir);
+        expect(branch.toString().trim()).toBe("topic");
+        expect(written.join("")).toMatch(
+          /::error::failed to add labels to https:\/\/github.com\/o\/r\/pull\/10: .*403/,
+        );
+        expect(await outputs()).toMatchObject({
+          "pr-url": "https://github.com/o/r/pull/10",
+          "pr-number": "10",
+        });
+      });
+
+      it("doesn't add labels to a duplicate pull request", async () => {
+        fakeFetch([
+          {
+            number: 7,
+            html_url: "https://github.com/o/r/pull/7",
+            body: marker("changes", hash),
+            head: { ref: "existing", sha: "abc", repo: { full_name: "o/r" } },
+          },
+        ]);
+
+        await run();
+
+        expect(process.exitCode).toBeUndefined();
+        expect((await outputs()).duplicated).toBe("true");
+      });
     });
   });
 });

@@ -466,4 +466,21 @@ export class GitHubClient {
       state: "closed",
     });
   }
+
+  /**
+   * Adds labels to a pull request.
+   *
+   * @param repository The repository name with owner.
+   * @param number The number of the pull request.
+   * @param labels The names of the labels.
+   */
+  async addLabels(
+    repository: string,
+    number: number,
+    labels: string[],
+  ): Promise<void> {
+    await this.rest("POST", `/repos/${repository}/issues/${number}/labels`, {
+      labels,
+    });
+  }
 }

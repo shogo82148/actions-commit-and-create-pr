@@ -26,12 +26,28 @@ jobs:
           head-branch: ${{ env.HEAD_BRANCH }}
           # other jobs and concurrent runs make the same changes.
           skip-duplicate: false
+          labels: |
+            documentation
+            enhancement, documentation
       - name: verify
         run: ./testdata/verify.sh "$COMMIT_SHA" "$HEAD_BRANCH" "$BASE_BRANCH" "$PR_URL"
         shell: bash
         env:
           COMMIT_SHA: ${{ steps.commit.outputs.commit-sha }}
           BASE_BRANCH: ${{ github.ref_name }}
+          PR_URL: ${{ steps.commit.outputs.pr-url }}
+          GH_TOKEN: ${{ github.token }}
+      - name: verify labels
+        run: |
+          set -ue
+          LABELS=$(gh pr view "$PR_URL" --json labels --jq '[.labels[].name] | sort | join(",")')
+          if [[ "$LABELS" != "documentation,enhancement" ]]; then
+              echo "::error::labels are not matched. expected: documentation,enhancement, actual: $LABELS"
+              exit 1
+          fi
+          echo "labels are OK."
+        shell: bash
+        env:
           PR_URL: ${{ steps.commit.outputs.pr-url }}
           GH_TOKEN: ${{ github.token }}
       - name: cleanup

@@ -99,6 +99,23 @@ The prefix of the head branch.
 If `head-branch` is set, `head-branch-prefix` is ignored.
 The default is `actions-commit-and-create-pr/`.
 
+### labels
+
+The labels added to a pull request, separated by commas or newlines.
+
+```yaml
+- uses: shogo82148/actions-commit-and-create-pr@v1
+  with:
+    labels: |
+      dependencies
+      automated
+```
+
+The labels are added only to a new pull request.
+If creating a pull request is skipped because of a duplicate, the labels of the existing pull request are not changed.
+If the action fails to add labels, the step fails after finishing the rest (closing superseded pull requests and checking out the commit),
+because the pull request has already been created.
+
 ### commit-message:
 
 The commit message.
