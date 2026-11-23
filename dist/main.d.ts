@@ -203,6 +203,13 @@ export type CloseClient = Pick<GitHubClient, "createIssueComment" | "closePullRe
  * @returns The numbers of the pull requests closed.
  */
 export declare function closeSupersededPullRequests(repository: string, superseded: PullRequestSummary[], newPullRequest: PullRequest, client: CloseClient): Promise<number[]>;
+/**
+ * Parses the labels input. Labels are separated by commas or newlines.
+ *
+ * @param input The labels input.
+ * @returns The names of the labels, without duplicates.
+ */
+export declare function parseLabels(input: string): string[];
 /** Options of the pull request. */
 export interface PullRequestOptions {
     /** The repository name with owner, e.g. "octocat/hello-world". */

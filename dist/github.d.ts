@@ -201,4 +201,12 @@ export declare class GitHubClient {
      * @param number The number of the pull request.
      */
     closePullRequest(repository: string, number: number): Promise<void>;
+    /**
+     * Adds labels to a pull request.
+     *
+     * @param repository The repository name with owner.
+     * @param number The number of the pull request.
+     * @param labels The names of the labels.
+     */
+    addLabels(repository: string, number: number, labels: string[]): Promise<void>;
 }

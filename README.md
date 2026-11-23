@@ -33,6 +33,9 @@ The token needs the `contents: write` permission to create a branch and a commit
 and the `pull-requests: write` permission to create a pull request.
 If you use `GITHUB_TOKEN`, you also need to enable "Allow GitHub Actions to create and approve pull requests" in the repository settings.
 
+If you use `labels` with labels that don't exist in the repository, the token also needs the `issues: write` permission.
+See [labels](#labels).
+
 ## Duplicate Pull Requests
 
 By default, the action doesn't create a new pull request
@@ -98,6 +101,29 @@ The head branch. It must be different from `base-branch`. The default is `action
 The prefix of the head branch.
 If `head-branch` is set, `head-branch-prefix` is ignored.
 The default is `actions-commit-and-create-pr/`.
+
+### labels
+
+The labels added to a pull request, separated by commas or newlines.
+
+```yaml
+- uses: shogo82148/actions-commit-and-create-pr@v1
+  with:
+    labels: |
+      dependencies
+      automated
+```
+
+The labels are added only to a new pull request.
+If creating a pull request is skipped because of a duplicate, the labels of the existing pull request are not changed.
+
+If a label doesn't exist in the repository, GitHub creates it with the default color and no description,
+but only if the token has the `issues: write` permission.
+With `pull-requests: write` only, GitHub rejects the request with 422 Unprocessable Entity, and none of the labels are added (even existing ones).
+Create the labels beforehand, or grant `issues: write`.
+
+If the action fails to add labels, the step fails after finishing the rest (closing superseded pull requests and checking out the commit),
+because the pull request has already been created.
 
 ### commit-message:
 

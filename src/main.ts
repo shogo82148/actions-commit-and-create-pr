@@ -605,6 +605,20 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Parses the labels input. Labels are separated by commas or newlines.
+ *
+ * @param input The labels input.
+ * @returns The names of the labels, without duplicates.
+ */
+export function parseLabels(input: string): string[] {
+  const labels = input
+    .split(/[,\r\n]/)
+    .map((label) => label.trim())
+    .filter((label) => label !== "");
+  return [...new Set(labels)];
+}
+
 /** Options of the pull request. */
 export interface PullRequestOptions {
   /** The repository name with owner, e.g. "octocat/hello-world". */
@@ -677,6 +691,7 @@ export async function run(): Promise<void> {
     const title =
       core.getInput("title") || splitCommitMessage(commitMessage).headline;
     const body = core.getInput("body") || commitMessage;
+    const labels = parseLabels(core.getInput("labels"));
     const workingDirectory = path.resolve(
       core.getInput("working-directory") || ".",
     );
@@ -742,6 +757,22 @@ export async function run(): Promise<void> {
     core.setOutput("pr-url", pr.url);
     core.setOutput("pr-number", pr.number);
     core.setOutput("duplicated", false);
+
+    if (labels.length > 0) {
+      try {
+        core.info(`adding labels to ${pr.url}: ${labels.join(", ")}`);
+        await client.addLabels(repository, pr.number, labels);
+      } catch (error) {
+        // the action fails, but it continues the rest,
+        // because the pull request has already been created.
+        const message = errorMessage(error);
+        // GitHub returns 422 if a label doesn't exist and the token can't create it.
+        const hint = message.includes(" 422 ")
+          ? " Labels that don't exist are created only if the token has the issues: write permission."
+          : "";
+        core.setFailed(`failed to add labels to ${pr.url}: ${message}${hint}`);
+      }
+    }
 
     if (closeSuperseded) {
       const { superseded, modified } = findSupersededPullRequests(pulls, {

@@ -30183,6 +30183,18 @@ class GitHubClient {
             state: "closed",
         });
     }
+    /**
+     * Adds labels to a pull request.
+     *
+     * @param repository The repository name with owner.
+     * @param number The number of the pull request.
+     * @param labels The names of the labels.
+     */
+    async addLabels(repository, number, labels) {
+        await this.rest("POST", `/repos/${repository}/issues/${number}/labels`, {
+            labels,
+        });
+    }
 }
 
 /** The number of blobs uploaded concurrently. */
@@ -30580,6 +30592,19 @@ function errorMessage(error) {
     return error instanceof Error ? error.message : String(error);
 }
 /**
+ * Parses the labels input. Labels are separated by commas or newlines.
+ *
+ * @param input The labels input.
+ * @returns The names of the labels, without duplicates.
+ */
+function parseLabels(input) {
+    const labels = input
+        .split(/[,\r\n]/)
+        .map((label) => label.trim())
+        .filter((label) => label !== "");
+    return [...new Set(labels)];
+}
+/**
  * Creates a pull request from the head branch to the base branch.
  *
  * @param options The options.
@@ -30627,6 +30652,7 @@ async function run() {
             `Auto updates by the ${workflowRun.workflow} workflow`;
         const title = getInput("title") || splitCommitMessage(commitMessage).headline;
         const body = getInput("body") || commitMessage;
+        const labels = parseLabels(getInput("labels"));
         const workingDirectory = path$1.resolve(getInput("working-directory") || ".");
         const skipDuplicate = getBooleanInput("skip-duplicate", true);
         const closeSuperseded = getBooleanInput("close-superseded", false);
@@ -30675,6 +30701,22 @@ async function run() {
         setOutput("pr-url", pr.url);
         setOutput("pr-number", pr.number);
         setOutput("duplicated", false);
+        if (labels.length > 0) {
+            try {
+                info(`adding labels to ${pr.url}: ${labels.join(", ")}`);
+                await client.addLabels(repository, pr.number, labels);
+            }
+            catch (error) {
+                // the action fails, but it continues the rest,
+                // because the pull request has already been created.
+                const message = errorMessage(error);
+                // GitHub returns 422 if a label doesn't exist and the token can't create it.
+                const hint = message.includes(" 422 ")
+                    ? " Labels that don't exist are created only if the token has the issues: write permission."
+                    : "";
+                setFailed(`failed to add labels to ${pr.url}: ${message}${hint}`);
+            }
+        }
         if (closeSuperseded) {
             const { superseded, modified } = findSupersededPullRequests(pulls, {
                 repository,

@@ -265,4 +265,20 @@ describe("GitHubClient", () => {
       ],
     ]);
   });
+
+  it("adds labels to a pull request", async () => {
+    const fetch = fakeFetch(200, []);
+    const client = new GitHubClient("token", {
+      apiUrl: "https://api.example.com",
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    });
+    await client.addLabels("o/r", 3, ["bug", "good first issue"]);
+
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe("https://api.example.com/repos/o/r/issues/3/labels");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual({
+      labels: ["bug", "good first issue"],
+    });
+  });
 });
