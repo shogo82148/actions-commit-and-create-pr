@@ -33,6 +33,13 @@ inputs:
     description: "Skip creating a pull request if an open pull request into the base branch has the same changes"
     required: false
     default: "true"
+  close-superseded:
+    description: "Close older open pull requests in the same group, after creating a new pull request"
+    required: false
+    default: "false"
+  group:
+    description: "The group of pull requests used by close-superseded. The default is the path of the workflow file and the job id"
+    required: false
 outputs:
   commit-url:
     description: "The URL of a commit created"
@@ -46,6 +53,8 @@ outputs:
     description: "The number of a pull request created"
   duplicated:
     description: "true if creating a pull request is skipped because an open pull request has the same changes"
+  closed-pull-requests:
+    description: "The JSON array of the numbers of pull requests closed by close-superseded"
 runs:
   using: "node24"
   main: "dist/index.js"

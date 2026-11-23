@@ -49,6 +49,30 @@ Only pull requests whose head branch is in the same repository are considered.
 If the workflow runs concurrently, both runs may create pull requests with the same changes.
 Use [`concurrency`](https://docs.github.com/en/actions/using-jobs/using-concurrency) to avoid it.
 
+## Superseded Pull Requests
+
+If `close-superseded` is `true`, the action closes older open pull requests in the same group after creating a new pull request.
+It comments "This pull request is superseded by #N." on each of them, closes it, and deletes its head branch.
+It is useful for periodic workflows, e.g. a daily update creates a new pull request and closes yesterday's one.
+
+The group is specified by `group`.
+The default is the path of the workflow file and the job id, e.g. `.github/workflows/update.yml:update`.
+If a job uses the action more than once, specify a different `group` for each step.
+
+A pull request is closed only if all of the following are satisfied:
+
+- It is open, and its base branch is same as the new pull request.
+- Its head branch is in the same repository.
+- It has the same group in the hidden marker (`<!-- actions-commit-and-create-pr:group=... -->`).
+  Pull requests created by older versions of the action don't have the marker, so they are not closed.
+- Its number is less than the new pull request.
+- Its head commit is the commit created by the action.
+  If someone has pushed commits to the pull request, it is not closed and a warning is reported.
+
+If the action fails to close pull requests, it reports warnings instead of failing,
+because the new pull request has already been created.
+If creating a pull request is skipped because of a duplicate, no pull requests are closed.
+
 ## File Modes
 
 If all changes are regular files, the action uses the [createCommitOnBranch](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch) mutation.
@@ -90,6 +114,17 @@ The default is `.`.
 
 Skip creating a pull request if an open pull request into the base branch has the same changes.
 The default is `true`.
+
+### close-superseded
+
+Close older open pull requests in the same group, after creating a new pull request.
+See [Superseded Pull Requests](#superseded-pull-requests).
+The default is `false`.
+
+### group
+
+The group of pull requests used by `close-superseded`.
+The default is the path of the workflow file and the job id, e.g. `.github/workflows/update.yml:update`.
 
 ### title
 
@@ -136,6 +171,12 @@ If creating a pull request is skipped, it is the number of the existing pull req
 
 `true` if creating a pull request is skipped because an open pull request has the same changes.
 Otherwise, `false`.
+
+### closed-pull-requests
+
+The JSON array of the numbers of pull requests closed by `close-superseded`, e.g. `[12,15]`.
+Use `fromJSON` to parse it.
+It is empty if `close-superseded` is `false` or creating a pull request is skipped.
 
 ## Related Works
 

@@ -29980,7 +29980,8 @@ class GitHubClient {
         if (!res.ok) {
             throw new Error(`GitHub REST API ${method} ${path} returned ${res.status} ${res.statusText}: ${text}`);
         }
-        return JSON.parse(text);
+        // some APIs return no content, e.g. 204 No Content of deleting a reference.
+        return (text === "" ? undefined : JSON.parse(text));
     }
     /**
      * Gets the node ID of a repository.
@@ -30087,6 +30088,16 @@ class GitHubClient {
         });
     }
     /**
+     * Deletes a branch.
+     *
+     * @param repository The repository name with owner.
+     * @param branch The name of the branch.
+     */
+    async deleteRef(repository, branch) {
+        const ref = branch.split("/").map(encodeURIComponent).join("/");
+        await this.rest("DELETE", `/repos/${repository}/git/refs/heads/${ref}`);
+    }
+    /**
      * Updates a branch. It fails if the update is not a fast-forward.
      *
      * @param repository The repository name with owner.
@@ -30140,6 +30151,7 @@ class GitHubClient {
                     url: pr.html_url,
                     body: pr.body ?? "",
                     headBranch: pr.head.ref,
+                    headSha: pr.head.sha,
                     headRepository: pr.head.repo?.full_name ?? null,
                 });
             }
@@ -30147,6 +30159,29 @@ class GitHubClient {
                 return result;
             }
         }
+    }
+    /**
+     * Creates a comment on a pull request.
+     *
+     * @param repository The repository name with owner.
+     * @param number The number of the pull request.
+     * @param body The body of the comment.
+     */
+    async createIssueComment(repository, number, body) {
+        await this.rest("POST", `/repos/${repository}/issues/${number}/comments`, {
+            body,
+        });
+    }
+    /**
+     * Closes a pull request.
+     *
+     * @param repository The repository name with owner.
+     * @param number The number of the pull request.
+     */
+    async closePullRequest(repository, number) {
+        await this.rest("PATCH", `/repos/${repository}/pulls/${number}`, {
+            state: "closed",
+        });
     }
 }
 
@@ -30373,18 +30408,65 @@ function defaultHeadBranch(prefix, run, now = new Date()) {
     const date = now.toISOString().slice(0, 10); // YYYY-MM-DD in UTC
     return `${prefix}${date}-${run.runId}-${run.runAttempt}`;
 }
-/** The prefix of the marker that embeds the hash of the changes into the pull request body. */
-const CHANGES_MARKER_PREFIX = "<!-- actions-commit-and-create-pr:changes=";
+/** The prefix of the hidden markers in the pull request body. */
+const MARKER_PREFIX = "<!-- actions-commit-and-create-pr:";
+const MARKER_SUFFIX = " -->";
+/**
+ * Escapes characters that may end the HTML comment or break the line.
+ *
+ * @param value The value of the marker.
+ * @returns The escaped value.
+ */
+function escapeMarkerValue(value) {
+    return value.replace(/[%<>\r\n]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+}
+/**
+ * Builds a hidden marker embedded into the pull request body.
+ *
+ * @param key The key of the marker, e.g. "changes".
+ * @param value The value of the marker.
+ * @returns The marker, e.g. "<!-- actions-commit-and-create-pr:changes=sha256:... -->".
+ */
+function marker(key, value) {
+    return `${MARKER_PREFIX}${key}=${escapeMarkerValue(value)}${MARKER_SUFFIX}`;
+}
+/**
+ * Extracts the values of the markers from the pull request body.
+ *
+ * @param body The body of the pull request.
+ * @param key The key of the markers.
+ * @returns The values found.
+ */
+function extractMarkers(body, key) {
+    const prefix = `${MARKER_PREFIX}${key}=`;
+    const values = [];
+    let idx = body.indexOf(prefix);
+    while (idx >= 0) {
+        const start = idx + prefix.length;
+        const end = body.indexOf(MARKER_SUFFIX, start);
+        if (end < 0) {
+            break;
+        }
+        try {
+            values.push(decodeURIComponent(body.slice(start, end)));
+        }
+        catch {
+            // ignore broken markers.
+        }
+        idx = body.indexOf(prefix, end);
+    }
+    return values;
+}
 /**
  * Builds the body of the pull request, with a link to the workflow run,
- * and a hidden marker of the hash of the changes for detecting duplicates.
+ * and hidden markers for detecting duplicates and superseded pull requests.
  *
  * @param body The body given by the user.
  * @param run The workflow run.
- * @param hash The hash of the changes, computed by changesHash().
+ * @param markers The values of the hidden markers.
  * @returns The body of the pull request.
  */
-function pullRequestBody(body, run, hash) {
+function pullRequestBody(body, run, markers) {
     const logUrl = `${run.serverUrl}/${run.repository}/actions/runs/${run.runId}/attempts/${run.runAttempt}`;
     return [
         body.trim(),
@@ -30393,44 +30475,109 @@ function pullRequestBody(body, run, hash) {
         "",
         `This pull request is generated by the ${run.workflow} workflow. [See the log](${logUrl}).`,
         "",
-        `${CHANGES_MARKER_PREFIX}${hash} -->`,
+        marker("changes", markers.changes),
+        // the group is unknown when the action runs outside of GitHub Actions.
+        ...(markers.group === "" ? [] : [marker("group", markers.group)]),
+        marker("commit", markers.commit),
         "",
     ].join("\n");
 }
 /**
- * Extracts the hashes of the changes from the pull request body.
+ * Returns the default group of pull requests: the path of the workflow file and the job id,
+ * e.g. ".github/workflows/update.yml:update".
  *
- * @param body The body of the pull request.
- * @returns The hashes found.
+ * @param env The environment variables.
+ * @returns The group, or undefined if the workflow is unknown.
  */
-function extractChangesHashes(body) {
-    const hashes = [];
-    let idx = body.indexOf(CHANGES_MARKER_PREFIX);
-    while (idx >= 0) {
-        const start = idx + CHANGES_MARKER_PREFIX.length;
-        const end = body.indexOf(" -->", start);
-        if (end < 0) {
-            break;
-        }
-        hashes.push(body.slice(start, end));
-        idx = body.indexOf(CHANGES_MARKER_PREFIX, end);
+function defaultGroup(env) {
+    // e.g. "octocat/hello-world/.github/workflows/update.yml@refs/heads/main"
+    const workflowRef = env.GITHUB_WORKFLOW_REF;
+    const job = env.GITHUB_JOB;
+    if (!workflowRef || !job) {
+        return undefined;
     }
-    return hashes;
+    let workflowPath = workflowRef.replace(/@[^@]*$/, "");
+    const repository = env.GITHUB_REPOSITORY;
+    if (repository && workflowPath.startsWith(`${repository}/`)) {
+        workflowPath = workflowPath.slice(repository.length + 1);
+    }
+    return `${workflowPath}:${job}`;
 }
 /**
  * Finds an open pull request that has the same changes.
  * Only pull requests from the same repository are considered,
  * so that pull requests from forks can't suppress new pull requests.
  *
- * @param options The repository, the base branch and the hash of the changes.
- * @param client The GitHub API client.
+ * @param pulls The open pull requests into the base branch.
+ * @param options The repository and the hash of the changes.
  * @returns The pull request found, or undefined.
  */
-async function findDuplicatePullRequest(options, client) {
-    info(`searching open pull requests into ${options.baseBranch} with the same changes (${options.hash})`);
-    const pulls = await client.listOpenPullRequests(options.repository, options.baseBranch);
+function findDuplicatePullRequest(pulls, options) {
     return pulls.find((pr) => pr.headRepository === options.repository &&
-        extractChangesHashes(pr.body).includes(options.hash));
+        extractMarkers(pr.body, "changes").includes(options.hash));
+}
+/**
+ * Finds open pull requests superseded by the new pull request.
+ * A pull request is superseded if it is in the same group, and it is older than the new one.
+ * Pull requests that have commits not created by the action are not superseded,
+ * because humans may have worked on them.
+ *
+ * @param pulls The open pull requests into the base branch.
+ * @param options The repository, the group and the number of the new pull request.
+ * @returns The superseded pull requests and the modified pull requests.
+ */
+function findSupersededPullRequests(pulls, options) {
+    const result = { superseded: [], modified: [] };
+    for (const pr of pulls) {
+        if (pr.headRepository !== options.repository ||
+            pr.number >= options.number ||
+            !extractMarkers(pr.body, "group").includes(options.group)) {
+            continue;
+        }
+        if (extractMarkers(pr.body, "commit").includes(pr.headSha)) {
+            result.superseded.push(pr);
+        }
+        else {
+            result.modified.push(pr);
+        }
+    }
+    return result;
+}
+/**
+ * Closes the superseded pull requests, and deletes their head branches.
+ * Errors are reported as warnings, because the new pull request has already been created.
+ *
+ * @param repository The repository name with owner.
+ * @param superseded The pull requests to be closed.
+ * @param newPullRequest The new pull request.
+ * @param client The GitHub API client.
+ * @returns The numbers of the pull requests closed.
+ */
+async function closeSupersededPullRequests(repository, superseded, newPullRequest, client) {
+    const closed = [];
+    for (const pr of superseded) {
+        try {
+            info(`closing ${pr.url}, superseded by ${newPullRequest.url}`);
+            await client.createIssueComment(repository, pr.number, `This pull request is superseded by #${newPullRequest.number}.`);
+            await client.closePullRequest(repository, pr.number);
+            closed.push(pr.number);
+        }
+        catch (error) {
+            warning(`failed to close ${pr.url}: ${errorMessage(error)}`);
+            continue;
+        }
+        try {
+            info(`deleting the branch ${pr.headBranch}`);
+            await client.deleteRef(repository, pr.headBranch);
+        }
+        catch (error) {
+            warning(`failed to delete the branch ${pr.headBranch}: ${errorMessage(error)}`);
+        }
+    }
+    return closed;
+}
+function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
 }
 /**
  * Creates a pull request from the head branch to the base branch.
@@ -30482,6 +30629,11 @@ async function run() {
         const body = getInput("body") || commitMessage;
         const workingDirectory = path$1.resolve(getInput("working-directory") || ".");
         const skipDuplicate = getBooleanInput("skip-duplicate", true);
+        const closeSuperseded = getBooleanInput("close-superseded", false);
+        const group = getInput("group") || defaultGroup(process.env) || "";
+        if (closeSuperseded && group === "") {
+            throw new Error("group is required to close superseded pull requests, because the workflow is unknown");
+        }
         const changes = await collectChanges(workingDirectory);
         if (changes.length === 0) {
             info("No changes to commit.");
@@ -30489,10 +30641,15 @@ async function run() {
         }
         const hash = changesHash(changes);
         const client = new GitHubClient(token);
+        let pulls = [];
+        if (skipDuplicate || closeSuperseded) {
+            info(`listing open pull requests into ${baseBranch}`);
+            pulls = await client.listOpenPullRequests(repository, baseBranch);
+        }
         if (skipDuplicate) {
-            const duplicate = await findDuplicatePullRequest({ repository, baseBranch, hash }, client);
+            const duplicate = findDuplicatePullRequest(pulls, { repository, hash });
             if (duplicate) {
-                info(`skipped: the pull request ${duplicate.url} has the same changes.`);
+                info(`skipped: the pull request ${duplicate.url} has the same changes (${hash}).`);
                 setOutput("head-branch", duplicate.headBranch);
                 setOutput("pr-url", duplicate.url);
                 setOutput("pr-number", duplicate.number);
@@ -30509,11 +30666,27 @@ async function run() {
             baseBranch,
             headBranch,
             title,
-            body: pullRequestBody(body, workflowRun, hash),
+            body: pullRequestBody(body, workflowRun, {
+                changes: hash,
+                group,
+                commit: created.oid,
+            }),
         }, client);
         setOutput("pr-url", pr.url);
         setOutput("pr-number", pr.number);
         setOutput("duplicated", false);
+        if (closeSuperseded) {
+            const { superseded, modified } = findSupersededPullRequests(pulls, {
+                repository,
+                group,
+                number: pr.number,
+            });
+            for (const m of modified) {
+                warning(`${m.url} is not closed, because it has commits not created by the action.`);
+            }
+            const closed = await closeSupersededPullRequests(repository, superseded, pr, client);
+            setOutput("closed-pull-requests", JSON.stringify(closed));
+        }
         await checkout({
             workingDirectory,
             headBranch,
@@ -30522,12 +30695,7 @@ async function run() {
         }, created.oid);
     }
     catch (error) {
-        if (error instanceof Error) {
-            setFailed(error.message);
-        }
-        else {
-            setFailed(String(error));
-        }
+        setFailed(errorMessage(error));
     }
 }
 /**

@@ -113,38 +113,96 @@ export interface WorkflowRun {
  */
 export declare function defaultHeadBranch(prefix: string, run: Pick<WorkflowRun, "runId" | "runAttempt">, now?: Date): string;
 /**
+ * Builds a hidden marker embedded into the pull request body.
+ *
+ * @param key The key of the marker, e.g. "changes".
+ * @param value The value of the marker.
+ * @returns The marker, e.g. "<!-- actions-commit-and-create-pr:changes=sha256:... -->".
+ */
+export declare function marker(key: string, value: string): string;
+/**
+ * Extracts the values of the markers from the pull request body.
+ *
+ * @param body The body of the pull request.
+ * @param key The key of the markers.
+ * @returns The values found.
+ */
+export declare function extractMarkers(body: string, key: string): string[];
+/** The hidden markers embedded into the pull request body. */
+export interface PullRequestMarkers {
+    /** The hash of the changes, computed by changesHash(). It is used for detecting duplicates. */
+    changes: string;
+    /** The group of the pull request. It is used for detecting superseded pull requests. */
+    group: string;
+    /** The SHA of the commit created by the action. It is used for detecting modifications by humans. */
+    commit: string;
+}
+/**
  * Builds the body of the pull request, with a link to the workflow run,
- * and a hidden marker of the hash of the changes for detecting duplicates.
+ * and hidden markers for detecting duplicates and superseded pull requests.
  *
  * @param body The body given by the user.
  * @param run The workflow run.
- * @param hash The hash of the changes, computed by changesHash().
+ * @param markers The values of the hidden markers.
  * @returns The body of the pull request.
  */
-export declare function pullRequestBody(body: string, run: WorkflowRun, hash: string): string;
+export declare function pullRequestBody(body: string, run: WorkflowRun, markers: PullRequestMarkers): string;
 /**
- * Extracts the hashes of the changes from the pull request body.
+ * Returns the default group of pull requests: the path of the workflow file and the job id,
+ * e.g. ".github/workflows/update.yml:update".
  *
- * @param body The body of the pull request.
- * @returns The hashes found.
+ * @param env The environment variables.
+ * @returns The group, or undefined if the workflow is unknown.
  */
-export declare function extractChangesHashes(body: string): string[];
-/** The subset of GitHubClient that findDuplicatePullRequest() uses. */
-export type ListPullRequestsClient = Pick<GitHubClient, "listOpenPullRequests">;
+export declare function defaultGroup(env: Record<string, string | undefined>): string | undefined;
 /**
  * Finds an open pull request that has the same changes.
  * Only pull requests from the same repository are considered,
  * so that pull requests from forks can't suppress new pull requests.
  *
- * @param options The repository, the base branch and the hash of the changes.
- * @param client The GitHub API client.
+ * @param pulls The open pull requests into the base branch.
+ * @param options The repository and the hash of the changes.
  * @returns The pull request found, or undefined.
  */
-export declare function findDuplicatePullRequest(options: {
+export declare function findDuplicatePullRequest(pulls: PullRequestSummary[], options: {
     repository: string;
-    baseBranch: string;
     hash: string;
-}, client: ListPullRequestsClient): Promise<PullRequestSummary | undefined>;
+}): PullRequestSummary | undefined;
+/** The result of findSupersededPullRequests(). */
+export interface SupersededPullRequests {
+    /** The pull requests to be closed. */
+    superseded: PullRequestSummary[];
+    /** The pull requests in the same group, but they have commits not created by the action. */
+    modified: PullRequestSummary[];
+}
+/**
+ * Finds open pull requests superseded by the new pull request.
+ * A pull request is superseded if it is in the same group, and it is older than the new one.
+ * Pull requests that have commits not created by the action are not superseded,
+ * because humans may have worked on them.
+ *
+ * @param pulls The open pull requests into the base branch.
+ * @param options The repository, the group and the number of the new pull request.
+ * @returns The superseded pull requests and the modified pull requests.
+ */
+export declare function findSupersededPullRequests(pulls: PullRequestSummary[], options: {
+    repository: string;
+    group: string;
+    number: number;
+}): SupersededPullRequests;
+/** The subset of GitHubClient that closeSupersededPullRequests() uses. */
+export type CloseClient = Pick<GitHubClient, "createIssueComment" | "closePullRequest" | "deleteRef">;
+/**
+ * Closes the superseded pull requests, and deletes their head branches.
+ * Errors are reported as warnings, because the new pull request has already been created.
+ *
+ * @param repository The repository name with owner.
+ * @param superseded The pull requests to be closed.
+ * @param newPullRequest The new pull request.
+ * @param client The GitHub API client.
+ * @returns The numbers of the pull requests closed.
+ */
+export declare function closeSupersededPullRequests(repository: string, superseded: PullRequestSummary[], newPullRequest: PullRequest, client: CloseClient): Promise<number[]>;
 /** Options of the pull request. */
 export interface PullRequestOptions {
     /** The repository name with owner, e.g. "octocat/hello-world". */
